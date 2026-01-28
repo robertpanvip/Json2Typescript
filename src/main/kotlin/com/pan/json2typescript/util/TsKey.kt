@@ -1,9 +1,6 @@
 package com.pan.json2typescript.util
 
 private val TS_KEYWORD = setOf(
-    "string", "number", "boolean", "any", "null",
-    "undefined", "object", "interface", "type",
-    "class", "enum", "export", "extends", "implements"
 )
 
 object TsKeyUtils {

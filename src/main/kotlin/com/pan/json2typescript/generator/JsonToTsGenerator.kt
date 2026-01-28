@@ -59,10 +59,10 @@ class JsonToTsGenerator {
         val elements = node.toList()
         if (elements.isEmpty()) return "any"
 
-        // 非对象数组：primitive union
+        // 非对象数组（primitive / null / array 混合）
         if (!elements.all { it.isObject }) {
             return elements
-                .map { getPrimitive(it) }
+                .map { resolveType(typeName, it) }
                 .toSet()
                 .joinToString(" | ")
         }
@@ -72,10 +72,15 @@ class JsonToTsGenerator {
         val fieldCount = mutableMapOf<String, Int>()
 
         elements.forEach { obj ->
-            obj.fields().forEach { (key, value) ->
+            obj.properties().forEach { (key, value) ->
+                val fieldType = resolveType(
+                    NameUtils.singularize(key).replaceFirstChar { it.uppercase() },
+                    value
+                )
+
                 fieldTypes
                     .computeIfAbsent(key) { mutableSetOf() }
-                    .add(getPrimitive(value))
+                    .add(fieldType)
 
                 fieldCount[key] = fieldCount.getOrDefault(key, 0) + 1
             }
@@ -93,12 +98,21 @@ class JsonToTsGenerator {
         return typeName
     }
 
-
-
     private fun parseArray(typeName: String, node: JsonNode): String {
         if (node.isEmpty) return "unknown[]"
         val itemType = inferArrayItemType(typeName, node)
         return "$itemType[]"
+    }
+
+    private fun resolveType(typeName: String, node: JsonNode): String {
+        return when {
+            node.isObject -> {
+                parseNode(typeName, node)
+                typeName
+            }
+            node.isArray -> parseArray(typeName, node)
+            else -> getPrimitive(node)
+        }
     }
 
     private fun getPrimitive(node: JsonNode): String =

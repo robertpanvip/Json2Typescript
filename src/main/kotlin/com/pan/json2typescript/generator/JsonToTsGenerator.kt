@@ -3,6 +3,7 @@ package com.pan.json2typescript.generator
 import com.fasterxml.jackson.databind.JsonNode
 import com.pan.json2typescript.util.JsonParser
 import com.pan.json2typescript.util.NameUtils
+import com.pan.json2typescript.util.TsKeyUtils
 import java.lang.StringBuilder
 import java.util.*
 
@@ -47,8 +48,8 @@ class JsonToTsGenerator {
                 }
                 else -> getPrimitive(value)
             }
-
-            sb.append("  $key: $fieldType;\n")
+            val tsKey = TsKeyUtils.toTsKey(key)
+            sb.append("  $tsKey: $fieldType;\n")
         }
 
         sb.append("}")

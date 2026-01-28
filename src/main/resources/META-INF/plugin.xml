@@ -43,7 +43,7 @@
                 class="com.pan.json2typescript.action.JsonToTsAction"
                 text="JSON to TypeScript"
                 description="Convert JSON to TypeScript types"
-                icon="/META-INF/icon.svg"
+                icon="/icon.svg"
         >
             <add-to-group
                     group-id="EditorPopupMenu"

@@ -27,7 +27,7 @@ class JsonToTsAction : AnAction() {
         if (!json.startsWith("{") && !json.startsWith("[")) {
             Messages.showErrorDialog(
                 project,
-                "剪贴板内容不是有效的 JSON",
+                "The clipboard content is not valid JSON.",
                 "JSON to TypeScript"
             )
             return
@@ -38,7 +38,7 @@ class JsonToTsAction : AnAction() {
         } catch (e: Exception) {
             Messages.showErrorDialog(
                 project,
-                e.message ?: "JSON 解析失败",
+                e.message ?: "Failed to parse JSON.",
                 "JSON to TypeScript"
             )
             return

@@ -1,6 +1,7 @@
 package com.pan.json2typescript.generator
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -315,6 +316,33 @@ class JsonToTsGeneratorTest {
         // name / remark 只在部分元素出现 -> 可选，且 null 被推断为 string
         assertTrue(ts.contains("  name?: string;"), ts)
         assertTrue(ts.contains("  remark?: string;"), ts)
+    }
+
+    @Test
+    fun `结构相同的两个对象复用同一类型（鸭子类型）`() {
+        val ts = generator.generate(
+            "Root",
+            """{"user":{"id":1,"name":"a"},"owner":{"id":2,"name":"b"}}"""
+        )
+        // user 先定义，owner 结构相同应复用 User，而不是新建 Owner
+        assertTrue(ts.contains("export type User = {"), ts)
+        assertTrue(ts.contains("  user: User;"), ts)
+        assertTrue(ts.contains("  owner: User;"), ts)
+        // 不应再定义 Owner 类型
+        assertFalse(ts.contains("export type Owner = {"), ts)
+    }
+
+    @Test
+    fun `对象与数组元素结构相同复用类型（鸭子类型）`() {
+        val ts = generator.generate(
+            "Root",
+            """{"profile":{"id":1,"name":"a"},"members":[{"id":2,"name":"b"}]}"""
+        )
+        // members 的元素结构与 profile 相同，应复用 Profile，而不是新建 Member
+        assertTrue(ts.contains("export type Profile = {"), ts)
+        assertTrue(ts.contains("  profile: Profile;"), ts)
+        assertTrue(ts.contains("  members: Profile[];"), ts)
+        assertFalse(ts.contains("export type Member = {"), ts)
     }
 
     @Test

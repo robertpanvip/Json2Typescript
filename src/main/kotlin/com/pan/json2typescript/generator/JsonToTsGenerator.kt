@@ -11,9 +11,12 @@ import java.util.*
 class JsonToTsGenerator {
 
     private val definitions = LinkedHashMap<String, String>()
+    // 结构签名 -> 已定义的类型名：用于鸭子类型去重（结构相同的对象复用同一类型）
+    private val structureToName = LinkedHashMap<String, String>()
 
     fun generate(rootName: String, json: String): String {
         definitions.clear()
+        structureToName.clear()
         val root = JsonParser.parse(json)
         parseNode(rootName, root)
 
@@ -25,32 +28,39 @@ class JsonToTsGenerator {
     private fun parseNode(typeName: String, node: JsonNode): String {
         if (definitions.containsKey(typeName)) return typeName
 
-        val body = when {
-            node.isObject -> parseObject(node)
-            node.isArray -> parseArray(typeName, node, null)
-            else -> getPrimitive(node, null)
+        return when {
+            node.isObject -> parseObject(typeName, node)
+            node.isArray -> {
+                // 顶层数组：元素对象注册在 typeName 下（见 inferArrayItemType）；
+                // 空数组根等无元素对象的情况兜底注册数组类型（如 unknown[]）
+                val arrType = parseArray(typeName, node, null)
+                definitions.putIfAbsent(typeName, arrType)
+                typeName
+            }
+            else -> {
+                val p = getPrimitive(node, null)
+                definitions.putIfAbsent(typeName, p)
+                p
+            }
         }
-
-        // 顶层数组场景下 inferArrayItemType 可能已注册了对象 body，避免被 "Root[]" 覆盖
-        definitions.putIfAbsent(typeName, body)
-        return typeName
     }
 
-    private fun parseObject(node: JsonNode): String {
-        val sb = StringBuilder("{\n")
-
+    private fun parseObject(typeName: String, node: JsonNode): String {
+        val fieldMap = LinkedHashMap<String, String>()
         node.properties().forEach { (key, value) ->
             val fieldType = when {
                 value.isObject -> parseNode(NameUtils.toTypeName(key), value)
                 value.isArray -> parseArray(NameUtils.singularize(key), value, key)
                 else -> getPrimitive(value, key)
             }
-            val tsKey = TsKeyUtils.toTsKey(key)
-            sb.append("  $tsKey: $fieldType;\n")
+            fieldMap[TsKeyUtils.toTsKey(key)] = fieldType
         }
 
+        val sb = StringBuilder("{\n")
+        fieldMap.forEach { (tsKey, fieldType) -> sb.append("  $tsKey: $fieldType;\n") }
         sb.append("}")
-        return sb.toString()
+        val body = sb.toString()
+        return registerOrReuse(typeName, body, signatureOf(fieldMap))
     }
 
     private fun inferArrayItemType(typeName: String, node: JsonNode, key: String?): String {
@@ -65,7 +75,6 @@ class JsonToTsGenerator {
                 .joinToString(" | ")
         }
 
-        val sb = StringBuilder("{\n")
         val fieldTypes = mutableMapOf<String, MutableSet<String>>()
         val fieldCount = mutableMapOf<String, Int>()
 
@@ -85,17 +94,39 @@ class JsonToTsGenerator {
             }
         }
 
+        val fieldMap = LinkedHashMap<String, String>()
+        val sb = StringBuilder("{\n")
         fieldTypes.forEach { (fieldKey, types) ->
             val optional = fieldCount[fieldKey] != elements.size
             val optionalMark = if (optional) "?" else ""
 
-            sb.append("  ${TsKeyUtils.toTsKey(fieldKey)}$optionalMark: ${types.joinToString(" | ")};\n")
+            val union = types.joinToString(" | ")
+            val tsKey = TsKeyUtils.toTsKey(fieldKey)
+            fieldMap[tsKey] = union
+            sb.append("  $tsKey$optionalMark: $union;\n")
         }
-
         sb.append("}")
-        definitions[typeName] = sb.toString()
+        val body = sb.toString()
+        return registerOrReuse(typeName, body, signatureOf(fieldMap))
+    }
+
+    /**
+     * 按结构注册或复用类型（鸭子类型）。
+     * 若已有相同结构签名的定义，直接复用其类型名；否则以 [typeName] 注册新类型。
+     * 字段顺序不影响去重（签名按字段名排序）。
+     */
+    private fun registerOrReuse(typeName: String, body: String, signature: String): String {
+        structureToName[signature]?.let { existingName ->
+            return existingName
+        }
+        structureToName[signature] = typeName
+        definitions.putIfAbsent(typeName, body)
         return typeName
     }
+
+    private fun signatureOf(fieldMap: LinkedHashMap<String, String>): String =
+        fieldMap.entries.sortedBy { it.key }
+            .joinToString(";") { "${it.key}|${it.value}" }
 
     private fun parseArray(typeName: String, node: JsonNode, key: String?): String {
         if (node.isEmpty) {

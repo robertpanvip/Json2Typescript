@@ -1,0 +1,53 @@
+name: Test Kotlin Plugin
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+  pull_request:
+    branches:
+      - main
+      - master
+
+
+jobs:
+
+  test:
+
+    runs-on: ubuntu-latest
+
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+
+      - name: Setup JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 9.0.0
+
+
+      - name: Run tests
+        run: gradle test --no-daemon
+
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-report
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/

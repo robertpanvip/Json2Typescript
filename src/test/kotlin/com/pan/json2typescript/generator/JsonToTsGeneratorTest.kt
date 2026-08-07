@@ -336,4 +336,35 @@ class JsonToTsGeneratorTest {
         assertTrue(ts.contains("  onSale: boolean;"), ts)
         assertTrue(ts.contains("  tags: string[];"), ts)
     }
+
+    @Test
+    fun `JSON5 输入生成正确类型`() {
+        val ts = generator.generate(
+            "Root",
+            """
+            {
+                // 用户信息
+                'name': 'tom',
+                userId: 1001,         // 未加引号 key + 单引号
+                score: 0x10,          // 十六进制
+                ratio: .5,            // 前导小数点
+                big: +99,             // 显式正号
+                max: Infinity,        // 关键字 -> number
+                empty: undefined,     // undefined -> 按 key 推断
+                tags: ['a', 'b'],     /* 块注释 */
+            }
+            """.trimIndent()
+        )
+        // 标量类型正确推断
+        assertTrue(ts.contains("  name: string;"), ts)
+        assertTrue(ts.contains("  userId: number;"), ts)
+        assertTrue(ts.contains("  score: number;"), ts)
+        assertTrue(ts.contains("  ratio: number;"), ts)
+        assertTrue(ts.contains("  big: number;"), ts)
+        assertTrue(ts.contains("  max: number;"), ts)
+        // undefined 作为 null 处理，按 key(empty) 无法推断 -> null 类型兜底
+        assertTrue(ts.contains("  empty: null;"), ts)
+        // 数组
+        assertTrue(ts.contains("  tags: string[];"), ts)
+    }
 }

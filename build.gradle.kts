@@ -21,11 +21,15 @@ repositories {
 dependencies {
     intellijPlatform {
         webstorm("2025.3")  // 或 "2025.2"，根据你想测试的版本
-        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add necessary plugin dependencies for compilation here, example:
         // bundledPlugin("com.intellij.java")
     }
+
+    // 纯 JVM 单元测试：不依赖 IntelliJ 测试框架，跑得快
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    // Gradle 9 起需要显式声明 launcher 才能运行 JUnit Platform 测试
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 intellijPlatform {
@@ -48,5 +52,8 @@ tasks {
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "21"
+    }
+    test {
+        useJUnitPlatform()
     }
 }

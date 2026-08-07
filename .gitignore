@@ -43,3 +43,6 @@ gradle
 ### Mac OS ###
 .DS_Store
 /.kotlin/
+
+### WorkBuddy local working memory ###
+.workbuddy/

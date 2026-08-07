@@ -1,92 +1,90 @@
 # Json2Typescript
 
-一个轻量级的 IntelliJ / WebStorm 插件：一键把复制的 JSON 数据转换成 TypeScript 类型定义。
-
-> Json2Typescript is a lightweight IntelliJ / WebStorm plugin that converts copied JSON into TypeScript type definitions with one click.
+A lightweight IntelliJ / WebStorm plugin that converts copied JSON into TypeScript type definitions with one click.
 
 ---
 
-## 功能特性
+## Features
 
-- **一键转换**：在编辑器右键菜单中直接把 JSON 转为 TypeScript 类型。
-- **嵌套对象与数组**：自动为每一层嵌套对象生成独立的 `export type`。
-- **联合类型推断**：混合类型数组会生成 `(number | string | boolean)[]` 形式（带括号避免歧义）。
-- **可选字段自动标记**：数组中部分元素缺失的字段自动标记为 `?:`。
-- **null 值按字段名推断类型**：JSON 里值为 `null` 时，根据字段名猜测类型（见下表），猜不到则保持 `null`。
-- **复数 / 集合词剥离**：数组字段名生成"最短"的元素类型名，例如 `itemList → Item`、`apples → Apple`、`categories → Category`。
-- **JSON5 解析**：在宽松 JSON 基础上完整支持 JSON5——十六进制数字（`0xFF`）、前导/尾随小数点（`.5` / `5.`）、显式正号（`+5`）、`Infinity` / `NaN` 字面量、`undefined` 值、多行字符串（行继续）、`#` 行注释，以及单引号、未加引号 key、尾逗号、`//` 与 `/* */` 注释等非标准写法。
-- **TS 保留字加引号**：`class` / `default` / `interface` / `type` 等保留字作为 key 时自动加引号（`"class"`）。
-- **空数组按 key 猜测元素类型**：`tags: [] → string[]`、`ids: [] → number[]`、`list: [] → unknown[]`。
-- **结构去重（鸭子类型）**：结构相同的对象只生成一个类型定义——无论它来自嵌套对象还是数组元素，只要字段名与类型一致就复用同一类型，先定义者胜出类型名，避免重复类型。
+- **One-click conversion**: turn JSON into TypeScript types directly from the editor's right-click menu.
+- **Nested objects & arrays**: automatically generates an independent `export type` for each level of nested objects.
+- **Union type inference**: mixed-type arrays produce `(number | string | boolean)[]` form (parenthesized to avoid ambiguity).
+- **Optional fields auto-marked**: fields missing from some array elements are automatically marked with `?:`.
+- **null value type inference by key**: when a JSON value is `null`, the type is guessed from the field name (see table below); if it cannot be guessed, it stays `null`.
+- **Plural / collection-word stripping**: array field names produce the "shortest" element type name, e.g. `itemList → Item`, `apples → Apple`, `categories → Category`.
+- **JSON5 parsing**: on top of lenient JSON, fully supports JSON5 — hexadecimal numbers (`0xFF`), leading/trailing decimal points (`.5` / `5.`), explicit plus sign (`+5`), `Infinity` / `NaN` literals, `undefined` values, multiline strings (line continuation), `#` line comments, as well as single quotes, unquoted keys, trailing commas, `//` and `/* */` comments and other non-standard syntax.
+- **TS reserved-word quoting**: reserved words such as `class` / `default` / `interface` / `type` used as keys are automatically quoted (`"class"`).
+- **Empty array element type by key**: `tags: [] → string[]`, `ids: [] → number[]`, `list: [] → unknown[]`.
+- **Structural deduplication (duck typing)**: objects with identical structure generate only one type definition — whether they come from a nested object or an array element, as long as field names and types match, the same type is reused, with the first-defined name winning, avoiding duplicate types.
 
 ---
 
-## 类型推断规则
+## Type Inference Rules
 
-### 1. null 值按 key 推断（`TypeGuesser`）
+### 1. null value inference by key (`TypeGuesser`)
 
-| 字段名示例 | 推断类型 | 依据 |
-|-----------|---------|------|
-| `userId` / `orderId` | `number` | 含 `id` 标识 |
-| `userName` / `remark` | `string` | 文本类语义 |
-| `isDeleted` / `hasChild` | `boolean` | `is` / `has` 前缀 |
-| `createTime` / `birthday` | `string` | 日期时间语义 |
-| `price` / `count` | `number` | 数值语义 |
-| `phone` / `uuid` / `email` | `string` | 强字符串标记（优先于数字） |
-| `orderNo` / `cardNumber` | `string` | 编号类（不是 number） |
-| `unknownField` | `null` | 无法识别，保持 null |
+| Field name example | Inferred type | Basis |
+|--------------------|---------------|-------|
+| `userId` / `orderId` | `number` | contains `id` marker |
+| `userName` / `remark` | `string` | textual semantics |
+| `isDeleted` / `hasChild` | `boolean` | `is` / `has` prefix |
+| `createTime` / `birthday` | `string` | date/time semantics |
+| `price` / `count` | `number` | numeric semantics |
+| `phone` / `uuid` / `email` | `string` | strong string markers (override number) |
+| `orderNo` / `cardNumber` | `string` | number-like codes (not number) |
+| `unknownField` | `null` | unrecognized, kept as null |
 
-支持 `camelCase` / `snake_case` / `kebab-case` 分词，并做简单复数归一（`names → name`）。
+Supports `camelCase` / `snake_case` / `kebab-case` tokenization, plus simple plural normalization (`names → name`).
 
-### 2. 复数 / 集合词剥离（`NameUtils`）
+### 2. Plural / collection-word stripping (`NameUtils`)
 
-目标是让数组元素的类型名**尽可能短**：
+Goal: keep array element type names as **short** as possible:
 
-| 字段名 | 元素类型 | 说明 |
-|--------|---------|------|
-| `itemList` | `Item` | 剥离集合词 `List` |
-| `userList` / `userSet` | `User` | camelCase 集合词后缀 |
-| `apples` | `Apple` | 常规去 `s` |
+| Field name | Element type | Note |
+|------------|--------------|------|
+| `itemList` | `Item` | strips collection word `List` |
+| `userList` / `userSet` | `User` | camelCase collection suffix |
+| `apples` | `Apple` | regular `-s` removal |
 | `categories` | `Category` | `ies → y` |
 | `boxes` / `watches` | `Box` / `Watch` | `xes/ches/shes → x/ch/sh` |
-| `item_list` | `Item` | snake 末 token 是集合词 |
-| `order_items_list` | `OrderItem` | 多层剥离 |
+| `item_list` | `Item` | snake last token is collection word |
+| `order_items_list` | `OrderItem` | multi-level stripping |
 
-> 集合词（`list`/`set`/`array`/`collection`）仅当它是独立单词时才剥离，避免误伤 `scientist`、`playlist` 等内嵌词。
+> Collection words (`list` / `set` / `array` / `collection`) are stripped only when they form a standalone word, to avoid mis-stripping embedded words like `scientist` or `playlist`.
 
-### 3. 保留字加引号（`TsKeyUtils`）
+### 3. Reserved-word quoting (`TsKeyUtils`)
 
-字段名为 TS / JS 保留字时自动加双引号：`class` → `"class"`、`default` → `"default"` 等。
+When a field name is a TS / JS reserved word, it is automatically quoted: `class` → `"class"`, `default` → `"default"`, etc.
 
-### 4. JSON5 支持（`JsonParser`）
+### 4. JSON5 support (`JsonParser`)
 
-`JsonParser` 在交给 Jackson 之前会先做一层「JSON5 感知」的归一化（字符串 / 注释感知，逐字符扫描），把 Jackson 原生不支持的写法翻译成标准 JSON：
+Before handing off to Jackson, `JsonParser` applies a JSON5-aware normalization pass (string/comment aware, character-by-character scan) that translates JSON5 syntax Jackson does not natively support into standard JSON:
 
-| JSON5 写法 | 说明 | 归一化结果 / 类型 |
-|-----------|------|------------------|
-| `{a: 1, 'b': 2}` | 未加引号 / 单引号 key | 标准 JSON key |
-| `0xFF` / `0x1F` | 十六进制数字 | `255` / `31`（number） |
-| `.5` / `.25` | 前导小数点 | `0.5` / `0.25`（number） |
-| `5.` / `10.` | 尾随小数点 | `5.0` / `10.0`（number） |
-| `+5` / `+3.14` | 显式正号 | `5` / `3.14`（number） |
-| `Infinity` / `-Infinity` | 无穷字面量 | `number` 类型 |
-| `NaN` | 非数字面量 | `number` 类型（值占位为 `0`） |
-| `undefined` | 未定义值 | 视为 `null`，按 key 推断类型 |
-| `"a\<换行>b"` | 多行字符串（行继续） | `"ab"` |
-| `//` `#` `/* */` | 行 / 块注释 | 解析时去除 |
+| JSON5 syntax | Description | Normalized result / type |
+|--------------|-------------|--------------------------|
+| `{a: 1, 'b': 2}` | unquoted / single-quoted keys | standard JSON keys |
+| `0xFF` / `0x1F` | hexadecimal numbers | `255` / `31` (number) |
+| `.5` / `.25` | leading decimal point | `0.5` / `0.25` (number) |
+| `5.` / `10.` | trailing decimal point | `5.0` / `10.0` (number) |
+| `+5` / `+3.14` | explicit plus sign | `5` / `3.14` (number) |
+| `Infinity` / `-Infinity` | infinity literals | `number` type |
+| `NaN` | not-a-number literal | `number` type (value placeholder `0`) |
+| `undefined` | undefined value | treated as `null`, type inferred by key |
+| `"a\<newline>b"` | multiline string (line continuation) | `"ab"` |
+| `//` `#` `/* */` | line / block comments | stripped during parsing |
 
-> 标识符片段（如 `InfinityKey`）不会被误当作关键字替换；数值 / 关键字后紧跟单词字符时也不会被错误转换。
+> Identifier fragments such as `InfinityKey` are not mistakenly replaced as keywords; numeric / keyword tokens followed immediately by a word character are also not converted.
 
-### 5. 结构去重（鸭子类型，`JsonToTsGenerator`）
+### 5. Structural deduplication (duck typing, `JsonToTsGenerator`)
 
-转换时维护一个「结构签名 → 类型名」的映射：每个对象（嵌套对象或数组元素对象）在生成前先计算其结构签名（字段名与类型，按字段名排序、与字段顺序无关）。若签名已存在，则直接复用已有类型名；否则以当前推导出的类型名注册新类型。
+A "structure signature → type name" mapping is maintained during conversion: before generating each object (nested object or array element), its structure signature is computed (field names and types, sorted by field name — order independent). If the signature already exists, the existing type name is reused; otherwise a new type is registered under the currently derived type name.
 
-示例：
+Example:
 
 ```json
 {
-  "user":   { "id": 1, "name": "a" },
-  "owner":  { "id": 2, "name": "b" },
+  "user":    { "id": 1, "name": "a" },
+  "owner":   { "id": 2, "name": "b" },
   "members": [ { "id": 3, "name": "c" } ]
 }
 ```
@@ -94,8 +92,8 @@
 ```ts
 export type Root = {
   user: User;
-  owner: User;          // 与 user 结构相同，复用 User
-  members: User[];      // 数组元素结构也相同，复用 User
+  owner: User;          // same structure as user, reuses User
+  members: User[];      // array element has the same structure, reuses User
 };
 
 export type User = {
@@ -104,13 +102,13 @@ export type User = {
 };
 ```
 
-> 复用规则：先定义者胜出类型名（`user` 先出现 → 类型名 `User`）。`members` 的元素类型与 `profile` 等结构相同则统一复用，不再生成 `Member` / `Owner` 等重复类型。
+> Reuse rule: the first-defined name wins (`user` appears first → type name `User`). `members`' element type reuses `User` when its structure matches, instead of generating duplicate types like `Member` / `Owner`.
 
 ---
 
-## 使用示例
+## Usage Example
 
-输入 JSON：
+Input JSON:
 
 ```json
 {
@@ -126,7 +124,7 @@ export type User = {
 }
 ```
 
-输出 TypeScript：
+Output TypeScript:
 
 ```ts
 export type Root = {
@@ -149,24 +147,24 @@ export type Item = {
 
 ---
 
-## 构建与测试
+## Build & Test
 
-环境要求：JDK 21、Gradle（项目自带 wrapper）。插件目标：WebStorm 2025.3，`sinceBuild = 251`。
+Requirements: JDK 21, Gradle (project ships with the wrapper). Plugin target: WebStorm 2025.3, `sinceBuild = 251`.
 
 ```bash
-# 构建插件
+# Build the plugin
 ./gradlew build
 
-# 运行测试
+# Run tests
 ./gradlew test --no-configuration-cache
 ```
 
-> 说明：本机配置缓存锁文件偶发被占用，运行测试需加 `--no-configuration-cache`。
+> Note: the local configuration-cache lock file is occasionally held, so `--no-configuration-cache` is required when running tests.
 
-测试基于 JUnit 5（纯 JVM 单元，不依赖 IntelliJ 测试框架），覆盖 `TypeGuesser`、`NameUtils`、`TsKeyUtils`、`JsonToTsGenerator`、`JsonParser` 五个模块，当前全部通过。
+Tests use JUnit 5 (pure JVM, no IntelliJ test framework dependency) and cover five modules: `TypeGuesser`, `NameUtils`, `TsKeyUtils`, `JsonToTsGenerator`, `JsonParser`. All currently pass.
 
 ---
 
-## 许可证
+## License
 
-见仓库 LICENSE 文件（如有）。
+See the repository LICENSE file (if any).

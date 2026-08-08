@@ -365,4 +365,36 @@ class JsonToTsGeneratorTest {
         assertTrue(ts.contains("  tags: string[];"), ts)
     }
 
+    @Test
+    fun `数组含 null 元素不污染类型推断也不按 key 猜测`() {
+        val ts = generator.generate(
+            "Root",
+            """{"selectedLabelList":[{"id":1,"name":"a"},null,{"id":2,"name":"b"}]}"""
+        )
+        // 类型名来自对象结构（SelectedLabel），而不是按 key 猜测成 boolean / null
+        assertTrue(ts.contains("export type SelectedLabel = {"), ts)
+        assertTrue(ts.contains("  id: number;"), ts)
+        assertTrue(ts.contains("  name: string;"), ts)
+        // 该字段应为干净的元素数组，不含联合类型（SelectedLabel | boolean / | null）
+        val line = ts.lines().first { it.contains("selectedLabelList") }
+        assertTrue(line.contains("SelectedLabel[]"), ts)
+        assertFalse(line.contains("|"), ts)
+    }
+
+    @Test
+    fun `数字开头的 key 生成合法类型名加 I 前缀`() {
+        val ts = generator.generate(
+            "Root",
+            """{"2fa":{"code":1,"name":"x"},"123abc":[{"v":1}]}"""
+        )
+        // 数字开头的类型名非法，自动加 I 前缀：2fa -> I2fa
+        assertTrue(ts.contains("export type I2fa = {"), ts)
+        assertTrue(ts.contains("  code: number;"), ts)
+        assertTrue(ts.contains("  name: string;"), ts)
+        assertTrue(ts.contains("  \"2fa\": I2fa;"), ts)
+        // 数组 key 123abc：元素类型来自 singularize（补 Item），同样是合法名 I123abcItem
+        assertTrue(ts.contains("export type I123abcItem = {"), ts)
+        assertTrue(ts.contains("  \"123abc\": I123abcItem[];"), ts)
+    }
+
 }

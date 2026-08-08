@@ -279,15 +279,14 @@ object TypeGuesser {
         // 5) 末尾 token 最精确（最贴近字段语义）
         lastTokenGuess(last)?.let { return it }
 
-        // 6) contains 语义：key 中任意 token 命中即返回
+        // 6) contains 语义：numeric / date / string 关键字命中即返回
+        // 注意：布尔关键字不再走 contains —— 仅当它是末尾 token（step 5）或整体后缀
+        // （step 7 substringGuess）时才判为 boolean，避免 selectedLabelList 这类中间词误判。
         tokens.forEach { t ->
             if (tokenIn(t, NUMBER_WORDS)) return "number"
         }
         tokens.forEach { t ->
             if (tokenIn(t, DATE_WORDS)) return "string"
-        }
-        tokens.forEach { t ->
-            if (tokenIn(t, BOOLEAN_WORDS)) return "boolean"
         }
         tokens.forEach { t ->
             if (tokenIn(t, STRING_WORDS)) return "string"

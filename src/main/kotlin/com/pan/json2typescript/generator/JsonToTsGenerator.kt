@@ -67,9 +67,18 @@ class JsonToTsGenerator {
         val elements = node.toList()
         if (elements.isEmpty()) return "any"
 
-        // 非对象数组（primitive / null / array 混合）
-        if (!elements.all { it.isObject }) {
-            return elements
+        // 忽略数组中的 null 元素：null 不代表一种类型，也不计入字段出现次数
+        // 例如 [obj, null, obj]，null 不应把 guess(key) 注入联合类型，也不应让字段变 optional
+        val nonNull = elements.filter { !it.isNull }
+        if (nonNull.isEmpty()) {
+            // 全部为 null：无法从内容推断，按 key 猜测兜底
+            val guessed = key?.let { TypeGuesser.guess(it) }
+            return guessed ?: "any"
+        }
+
+        // 非对象数组（primitive / array 混合，已排除 null）
+        if (!nonNull.all { it.isObject }) {
+            return nonNull
                 .map { resolveType(typeName, it, key) }
                 .toSet()
                 .joinToString(" | ")
@@ -78,7 +87,7 @@ class JsonToTsGenerator {
         val fieldTypes = mutableMapOf<String, MutableSet<String>>()
         val fieldCount = mutableMapOf<String, Int>()
 
-        elements.forEach { obj ->
+        nonNull.forEach { obj ->
             obj.properties().forEach { (fieldKey, value) ->
                 val fieldType = resolveType(
                     NameUtils.singularize(fieldKey),
@@ -97,7 +106,7 @@ class JsonToTsGenerator {
         val fieldMap = LinkedHashMap<String, String>()
         val sb = StringBuilder("{\n")
         fieldTypes.forEach { (fieldKey, types) ->
-            val optional = fieldCount[fieldKey] != elements.size
+            val optional = fieldCount[fieldKey] != nonNull.size
             val optionalMark = if (optional) "?" else ""
 
             val union = types.joinToString(" | ")

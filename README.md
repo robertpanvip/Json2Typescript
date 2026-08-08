@@ -15,6 +15,8 @@ A lightweight IntelliJ / WebStorm plugin that converts copied JSON into TypeScri
 - **TS reserved-word quoting**: reserved words such as `class` / `default` / `interface` / `type` used as keys are automatically quoted (`"class"`).
 - **Empty array element type by key**: `tags: [] → string[]`, `ids: [] → number[]`, `list: [] → unknown[]`.
 - **Structural deduplication (duck typing)**: objects with identical structure generate only one type definition — whether they come from a nested object or an array element, as long as field names and types match, the same type is reused, with the first-defined name winning, avoiding duplicate types.
+- **Null array elements are ignored**: a `null` entry inside an array does not inject a guessed type into the union, nor does it make existing object fields wrongly optional. Types are inferred purely from the non-null elements (e.g. `[obj, null, obj] → Obj[]`).
+- **Legal type names for digit-leading keys**: a key that starts with a digit cannot be a valid TS identifier, so the generated type name is prefixed with `I` — `2fa → I2fa`, `123abc → I123abc`.
 
 ---
 
@@ -32,6 +34,8 @@ A lightweight IntelliJ / WebStorm plugin that converts copied JSON into TypeScri
 | `phone` / `uuid` / `email` | `string` | strong string markers (override number) |
 | `orderNo` / `cardNumber` | `string` | number-like codes (not number) |
 | `unknownField` | `null` | unrecognized, kept as null |
+
+> Boolean keywords (e.g. `selected`, `enabled`, `deleted`) only trigger a `boolean` guess when they appear at the **end** of the key (`isSelected`, `deleted`), or as an `is`/`has` prefix. A word like `selected` in the middle of a key (`selectedLabelList`) is **not** treated as boolean — it falls through to other semantics or stays `null`.
 
 Supports `camelCase` / `snake_case` / `kebab-case` tokenization, plus simple plural normalization (`names → name`).
 

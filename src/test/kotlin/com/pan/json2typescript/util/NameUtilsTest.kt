@@ -108,7 +108,8 @@ class NameUtilsTest {
         "user_info, UserInfo",
         "user-info, UserInfo",
         "fooBar, FooBar",
-        "123abc, 123abc",
+        "123abc, I123abc",
+        "2fa, I2fa",
         "a, A"
     )
     fun `toTypeName 测试`(input: String, expected: String) {

@@ -86,12 +86,16 @@ object NameUtils {
     /**
      * 把字段名转成类型名：去分隔符 + 首字母大写。
      * user -> User、user_info -> UserInfo、user-info -> UserInfo
+     *
+     * 数字开头的类型名在 TS 中非法（不能以数字开头），自动加 I 前缀：
+     * 123abc -> I123abc、2fa -> I2fa
      */
     fun toTypeName(key: String): String {
-        return key
+        val raw = key
             .split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.isNotEmpty() }
             .joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }
+        return if (raw.isNotEmpty() && raw.first().isDigit()) "I$raw" else raw
     }
 
     /** 集合词：作为字段名后缀时剥离（itemList -> item、user_list -> user），只取元素名 */

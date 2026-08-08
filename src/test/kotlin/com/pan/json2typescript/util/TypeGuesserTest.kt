@@ -142,7 +142,7 @@ class TypeGuesserTest {
     @ParameterizedTest(name = "key \"{0}\" 应推断为 boolean")
     @ValueSource(
         strings = [
-            "isActive", "isDeleted", "isDelete", "isAdmin", "isDirty", "is",
+            "isActive", "isDeleted", "isDelete", "isAdmin", "isDirty", "isSelected", "is",
             "hasChildren", "hasPermission", "hasChanged", "canEdit",
             "shouldNotify", "mustSync",
             // 状态 / 标志
@@ -203,7 +203,9 @@ class TypeGuesserTest {
             "boxList", "grid", "fluid", "analysis", "candidate", "island",
             "issue", "hash", "children", "foo", "a",
             "custom", "settings", "options", "update", "coupon",
-            "misc", "others", "xy"
+            "misc", "others", "xy",
+            // selected 出现在中间而非结尾：不判布尔（selectedItems 不应被猜成 boolean）
+            "selectedItems"
         ]
     )
     fun `should_return_null_for_unknown`(key: String) {

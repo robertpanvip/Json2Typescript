@@ -67,13 +67,12 @@ class JsonToTsGenerator {
         val elements = node.toList()
         if (elements.isEmpty()) return "any"
 
-        // 忽略数组中的 null 元素：null 不代表一种类型，也不计入字段出现次数
-        // 例如 [obj, null, obj]，null 不应把 guess(key) 注入联合类型，也不应让字段变 optional
+        // 忽略数组中的 null 元素：null 不代表一种元素类型，也不计入对象字段出现次数
+        // （字段级可空由 parseArray 根据「数组是否含 null 元素」统一加 | null 处理）
         val nonNull = elements.filter { !it.isNull }
         if (nonNull.isEmpty()) {
             // 全部为 null：无法从内容推断，按 key 猜测兜底
-            val guessed = key?.let { TypeGuesser.guess(it) }
-            return guessed ?: "any"
+            return key?.let { TypeGuesser.guess(it) } ?: "any"
         }
 
         // 非对象数组（primitive / array 混合，已排除 null）
@@ -138,15 +137,19 @@ class JsonToTsGenerator {
             .joinToString(";") { "${it.key}|${it.value}" }
 
     private fun parseArray(typeName: String, node: JsonNode, key: String?): String {
+        // 数组含 null 元素时，整个字段可空（ItemType[] | null），而不是把 null 塞进元素联合类型
+        val hasNullElement = node.toList().any { it.isNull }
         if (node.isEmpty) {
             // 空数组：根据 key 猜测元素类型（ids -> number[]、tags -> string[]）
             val guessed = key?.let { TypeGuesser.guess(it) }
-            return if (guessed != null) "$guessed[]" else "unknown[]"
+            val arrType = if (guessed != null) "$guessed[]" else "unknown[]"
+            return if (hasNullElement) "$arrType | null" else arrType
         }
         val itemType = inferArrayItemType(typeName, node, key)
         // 联合类型需要加括号：(number | string)[]，避免被解析成 number | string[]
         val wrapped = if (itemType.contains(" | ")) "($itemType)" else itemType
-        return "$wrapped[]"
+        val arrType = "$wrapped[]"
+        return if (hasNullElement) "$arrType | null" else arrType
     }
 
     private fun resolveType(typeName: String, node: JsonNode, key: String?): String {

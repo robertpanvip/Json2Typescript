@@ -135,12 +135,12 @@ class JsonToTsGeneratorTest {
     }
 
     @Test
-    fun `原始数组中的 null 元素按 key 推断`() {
+    fun `原始数组中的 null 元素使整个字段可空`() {
         val ts = generator.generate(
             "Root",
             """{"nums":[1,null,3]}"""
         )
-        assertTrue(ts.contains("  nums: number[];"), ts)
+        assertTrue(ts.contains("  nums: number[] | null;"), ts)
     }
 
     @Test
@@ -366,7 +366,7 @@ class JsonToTsGeneratorTest {
     }
 
     @Test
-    fun `数组含 null 元素不污染类型推断也不按 key 猜测`() {
+    fun `数组含 null 元素使整个字段可空但不按 key 猜测为 boolean`() {
         val ts = generator.generate(
             "Root",
             """{"selectedLabelList":[{"id":1,"name":"a"},null,{"id":2,"name":"b"}]}"""
@@ -375,10 +375,11 @@ class JsonToTsGeneratorTest {
         assertTrue(ts.contains("export type SelectedLabel = {"), ts)
         assertTrue(ts.contains("  id: number;"), ts)
         assertTrue(ts.contains("  name: string;"), ts)
-        // 该字段应为干净的元素数组，不含联合类型（SelectedLabel | boolean / | null）
+        // null 元素使整个字段可空：SelectedLabel[] | null（元素本身仍是干净的 SelectedLabel）
         val line = ts.lines().first { it.contains("selectedLabelList") }
-        assertTrue(line.contains("SelectedLabel[]"), ts)
-        assertFalse(line.contains("|"), ts)
+        assertTrue(line.contains("selectedLabelList: SelectedLabel[] | null;"), ts)
+        // 但仍不应按 selected 关键字把元素猜测成 boolean
+        assertFalse(line.contains("boolean"), ts)
     }
 
     @Test

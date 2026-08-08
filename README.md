@@ -12,7 +12,6 @@ A lightweight IntelliJ / WebStorm plugin that converts copied JSON into TypeScri
 - **Optional fields auto-marked**: fields missing from some array elements are automatically marked with `?:`.
 - **null value type inference by key**: when a JSON value is `null`, the type is guessed from the field name (see table below); if it cannot be guessed, it stays `null`.
 - **Plural / collection-word stripping**: array field names produce the "shortest" element type name, e.g. `itemList → Item`, `apples → Apple`, `categories → Category`.
-- **JSON5 parsing**: on top of lenient JSON, fully supports JSON5 — hexadecimal numbers (`0xFF`), leading/trailing decimal points (`.5` / `5.`), explicit plus sign (`+5`), `Infinity` / `NaN` literals, `undefined` values, multiline strings (line continuation), `#` line comments, as well as single quotes, unquoted keys, trailing commas, `//` and `/* */` comments and other non-standard syntax.
 - **TS reserved-word quoting**: reserved words such as `class` / `default` / `interface` / `type` used as keys are automatically quoted (`"class"`).
 - **Empty array element type by key**: `tags: [] → string[]`, `ids: [] → number[]`, `list: [] → unknown[]`.
 - **Structural deduplication (duck typing)**: objects with identical structure generate only one type definition — whether they come from a nested object or an array element, as long as field names and types match, the same type is reused, with the first-defined name winning, avoiding duplicate types.
@@ -56,24 +55,9 @@ Goal: keep array element type names as **short** as possible:
 
 When a field name is a TS / JS reserved word, it is automatically quoted: `class` → `"class"`, `default` → `"default"`, etc.
 
-### 4. JSON5 support (`JsonParser`)
+### 4. Lenient JSON parsing (`JsonParser`)
 
-Before handing off to Jackson, `JsonParser` applies a JSON5-aware normalization pass (string/comment aware, character-by-character scan) that translates JSON5 syntax Jackson does not natively support into standard JSON:
-
-| JSON5 syntax | Description | Normalized result / type |
-|--------------|-------------|--------------------------|
-| `{a: 1, 'b': 2}` | unquoted / single-quoted keys | standard JSON keys |
-| `0xFF` / `0x1F` | hexadecimal numbers | `255` / `31` (number) |
-| `.5` / `.25` | leading decimal point | `0.5` / `0.25` (number) |
-| `5.` / `10.` | trailing decimal point | `5.0` / `10.0` (number) |
-| `+5` / `+3.14` | explicit plus sign | `5` / `3.14` (number) |
-| `Infinity` / `-Infinity` | infinity literals | `number` type |
-| `NaN` | not-a-number literal | `number` type (value placeholder `0`) |
-| `undefined` | undefined value | treated as `null`, type inferred by key |
-| `"a\<newline>b"` | multiline string (line continuation) | `"ab"` |
-| `//` `#` `/* */` | line / block comments | stripped during parsing |
-
-> Identifier fragments such as `InfinityKey` are not mistakenly replaced as keywords; numeric / keyword tokens followed immediately by a word character are also not converted.
+`JsonParser` uses Jackson's streaming lenient mode — single quotes, unquoted field names, `//` and `/* */` comments, trailing commas, and leading zeros for numbers are all accepted with essentially zero extra overhead (no pre-scan of the input). JSON5-only syntax — hexadecimal numbers, leading/trailing decimal points, explicit plus signs, `Infinity` / `NaN` / `undefined` literals, `#` comments, and multiline string continuation — is **no longer supported**.
 
 ### 5. Structural deduplication (duck typing, `JsonToTsGenerator`)
 
@@ -161,7 +145,7 @@ Requirements: JDK 21, Gradle (project ships with the wrapper). Plugin target: We
 
 > Note: the local configuration-cache lock file is occasionally held, so `--no-configuration-cache` is required when running tests.
 
-Tests use JUnit 5 (pure JVM, no IntelliJ test framework dependency) and cover five modules: `TypeGuesser`, `NameUtils`, `TsKeyUtils`, `JsonToTsGenerator`, `JsonParser`. All currently pass.
+Tests use JUnit 5 (pure JVM, no IntelliJ test framework dependency) and cover four modules: `TypeGuesser`, `NameUtils`, `TsKeyUtils`, `JsonToTsGenerator`. All currently pass.
 
 ---
 

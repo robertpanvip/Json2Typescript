@@ -99,7 +99,7 @@ object NameUtils {
     }
 
     /** 集合词：作为字段名后缀时剥离（itemList -> item、user_list -> user），只取元素名 */
-    private val COLLECTION_WORDS = setOf("list", "set", "array", "collection")
+    private val COLLECTION_WORDS = setOf("list", "set", "map", "array", "collection")
 
     fun singularize(key: String): String = singularizeInternal(key, true)
 

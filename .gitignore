@@ -39,6 +39,8 @@ bin/
 .vscode/
 .idea/
 gradle
+!gradle/wrapper/
+!gradle/wrapper/gradle-wrapper.properties
 .intellijPlatform/
 ### Mac OS ###
 .DS_Store

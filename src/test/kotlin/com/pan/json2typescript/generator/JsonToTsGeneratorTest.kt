@@ -509,4 +509,50 @@ class JsonToTsGeneratorTest {
         assertTrue(ts.contains("export type KUidEdde99d78e7e41f29d0a9ef7de8122c1 = {"), ts)
         assertFalse(ts.contains("export type  ="), ts)
     }
+
+    @Test
+    fun `嵌套同名key不丢失中间层类型`() {
+        // a -> a -> a:123, c:2；v:456
+        // 最内层 {a:123} 注册为 A，中间层 {a:{a:123},c:2} 结构不同应注册为 A_2
+        val ts = generator.generate("Root", """{a:{a:{a:123},c:2},v:456}""")
+        // 最内层
+        assertTrue(ts.contains("export type A = {"), ts)
+        assertTrue(ts.contains("  a: number;"), ts)
+        // 中间层：不能丢失！字段 c 必须存在
+        assertTrue(ts.contains("export type A_2 = {"), ts)
+        assertTrue(ts.contains("  a: A;"), ts)
+        assertTrue(ts.contains("  c: number;"), ts)
+        // 根：引用的应是 A_2 而非 A
+        assertTrue(ts.contains("  a: A_2;"), ts)
+        assertTrue(ts.contains("  v: number;"), ts)
+        // 绝不能出现字段 c 丢失的情况
+        val a2Block = ts.substringAfter("export type A_2 = {").substringBefore("};")
+        assertTrue(a2Block.contains("c: number;"), "A_2 块中必须有 c 字段: $ts")
+    }
+
+    @Test
+    fun `三层嵌套同名key逐层生成独立类型`() {
+        // a -> a -> a -> a:123
+        // A={a:number}, A_2={a:A}, A_3={a:A_2}, Root={a:A_3}
+        val ts = generator.generate("Root", """{a:{a:{a:{a:123}}}}""")
+        assertTrue(ts.contains("export type A = {\n  a: number;\n};"), ts)
+        assertTrue(ts.contains("export type A_2 = {\n  a: A;\n};"), ts)
+        assertTrue(ts.contains("export type A_3 = {\n  a: A_2;\n};"), ts)
+        assertTrue(ts.contains("export type Root = {\n  a: A_3;\n};"), ts)
+    }
+
+    @Test
+    fun `兄弟节点同名key但结构不同各自独立`() {
+        // 两个兄弟对象的子对象都叫 a，但结构不同，不能互相覆盖
+        val ts = generator.generate("Root", """{b:{a:{x:1}},c:{a:{y:2}}}""")
+        // 第一个 a: {x:1} -> A
+        assertTrue(ts.contains("export type A = {"), ts)
+        assertTrue(ts.contains("  x: number;"), ts)
+        // 第二个 a: {y:2} -> A_2（结构不同，不能复用 A）
+        assertTrue(ts.contains("export type A_2 = {"), ts)
+        assertTrue(ts.contains("  y: number;"), ts)
+        // B 引用 A，C 引用 A_2
+        assertTrue(ts.contains("  a: A;"), ts)
+        assertTrue(ts.contains("  a: A_2;"), ts)
+    }
 }

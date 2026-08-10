@@ -26,23 +26,22 @@ class JsonToTsGenerator {
     }
 
     private fun parseNode(typeName: String, node: JsonNode): String {
-        if (definitions.containsKey(typeName)) return typeName
-
         return when {
             node.isObject -> parseObject(typeName, node)
             node.isArray -> {
                 // 顶层数组：用 typeName+Item 作为元素类型名，
                 // 避免 typeName 被 inferArrayItemType 内部注册成元素对象类型，
-                // 从而导致 definitions.putIfAbsent(typeName, arrType) 无法覆盖，
-                // 最终 Root 丢失数组包装（变成裸对象而非对象数组）。
+                // 从而导致 typeName 被占用后无法注册数组类型。
                 val itemTypeName = typeName + "Item"
                 val arrType = parseArray(itemTypeName, node, null)
-                definitions.putIfAbsent(typeName, arrType)
-                typeName
+                val name = uniqueName(typeName)
+                definitions[name] = arrType
+                name
             }
             else -> {
                 val p = getPrimitive(node, null)
-                definitions.putIfAbsent(typeName, p)
+                val name = uniqueName(typeName)
+                definitions[name] = p
                 p
             }
         }
@@ -144,15 +143,31 @@ class JsonToTsGenerator {
     /**
      * 按结构注册或复用类型（鸭子类型）。
      * 若已有相同结构签名的定义，直接复用其类型名；否则以 [typeName] 注册新类型。
+     * 若 [typeName] 已被结构不同的类型占用，自动生成唯一后缀名（A → A_2 → A_3）。
      * 字段顺序不影响去重（签名按字段名排序）。
      */
     private fun registerOrReuse(typeName: String, body: String, signature: String): String {
         structureToName[signature]?.let { existingName ->
             return existingName
         }
-        structureToName[signature] = typeName
-        definitions.putIfAbsent(typeName, body)
-        return typeName
+        val name = uniqueName(typeName)
+        definitions[name] = body
+        structureToName[signature] = name
+        return name
+    }
+
+    /**
+     * 生成不冲突的类型名：若 [base] 未被占用直接返回，否则追加 _2、_3… 后缀。
+     */
+    private fun uniqueName(base: String): String {
+        if (!definitions.containsKey(base)) return base
+        var idx = 2
+        var candidate = "${base}_$idx"
+        while (definitions.containsKey(candidate)) {
+            idx++
+            candidate = "${base}_$idx"
+        }
+        return candidate
     }
 
     private fun signatureOf(fieldMap: LinkedHashMap<String, String>): String =
@@ -194,10 +209,7 @@ class JsonToTsGenerator {
 
     private fun resolveType(typeName: String, node: JsonNode, key: String?): String {
         return when {
-            node.isObject -> {
-                parseNode(typeName, node)
-                typeName
-            }
+            node.isObject -> parseNode(typeName, node)
             node.isArray -> parseArray(typeName, node, key)
             else -> getPrimitive(node, key)
         }

@@ -27,7 +27,7 @@ class JsonToTsGeneratorTest {
                 "  age: number;\n" +
                 "  active: boolean;\n" +
                 "  score: number;\n" +
-                "}",
+                "};",
             ts
         )
     }
@@ -381,10 +381,10 @@ class JsonToTsGeneratorTest {
     @Test
     fun `空对象与空数组根`() {
         val ts = generator.generate("Root", """{}""")
-        assertTrue(ts.contains("export type Root = {\n}"), ts)
+        assertTrue(ts.contains("export type Root = {\n};"), ts)
 
         val ts2 = generator.generate("Root", """[]""")
-        assertTrue(ts2.contains("export type Root = unknown[]"), ts2)
+        assertTrue(ts2.contains("export type Root = unknown[];"), ts2)
     }
 
     @Test

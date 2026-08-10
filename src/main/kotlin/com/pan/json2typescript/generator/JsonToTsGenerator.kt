@@ -77,10 +77,10 @@ class JsonToTsGenerator {
 
         // 非对象数组（primitive / array 混合，已排除 null）
         if (!nonNull.all { it.isObject }) {
-            return nonNull
+            val types = nonNull
                 .map { resolveType(typeName, it, key) }
                 .toSet()
-                .joinToString(" | ")
+            return resolveUnion(types)
         }
 
         val fieldTypes = mutableMapOf<String, MutableSet<String>>()
@@ -108,7 +108,10 @@ class JsonToTsGenerator {
             val optional = fieldCount[fieldKey] != nonNull.size
             val optionalMark = if (optional) "?" else ""
 
-            val union = types.joinToString(" | ")
+            // 同一字段在数组不同元素中出现 unknown[] / unknown / any 等「无法推断」通配类型时，
+            // 若存在更具体的类型（如空数组 [] -> unknown[] 与 [{b:1}] -> Child[] 同列），
+            // 丢弃通配类型，避免产生 unknown[] | Child[] 这种无意义联合。
+            val union = resolveUnion(types)
             val tsKey = TsKeyUtils.toTsKey(fieldKey)
             fieldMap[tsKey] = union
             sb.append("  $tsKey$optionalMark: $union;\n")
@@ -135,6 +138,23 @@ class JsonToTsGenerator {
     private fun signatureOf(fieldMap: LinkedHashMap<String, String>): String =
         fieldMap.entries.sortedBy { it.key }
             .joinToString(";") { "${it.key}|${it.value}" }
+
+    /** 无法从内容推断的通配类型：出现更具体的类型时应被丢弃（空数组 [] -> unknown[] 即属此类） */
+    private val wildcardTypes = setOf("unknown", "unknown[]", "any")
+
+    /**
+     * 将字段在数组各元素中的类型集合解析为联合类型字符串。
+     *
+     * 若集合中同时存在通配类型（unknown[] / unknown / any，通常来自空数组或无法推断的值）
+     * 和具体类型，则丢弃通配类型：同一字段在数组中应统一为具体类型，
+     * 而不是产生 unknown[] | Child[] 这种无意义联合。
+     * 全为通配类型时保持原样（确实无法推断）。
+     */
+    private fun resolveUnion(types: Collection<String>): String {
+        val concrete = types.filter { it !in wildcardTypes }
+        val resolved = if (concrete.isNotEmpty()) concrete else types
+        return resolved.joinToString(" | ")
+    }
 
     private fun parseArray(typeName: String, node: JsonNode, key: String?): String {
         // 数组含 null 元素时，整个字段可空（ItemType[] | null），而不是把 null 塞进元素联合类型

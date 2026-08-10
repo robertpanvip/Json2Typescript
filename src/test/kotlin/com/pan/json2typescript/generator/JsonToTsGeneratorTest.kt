@@ -106,6 +106,9 @@ class JsonToTsGeneratorTest {
     @Test
     fun `数组内缺失字段标记为可选`() {
         val ts = generator.generate("Root", """[{"a":1},{"b":2}]""")
+        // 顶层数组：Root 应为数组类型，元素类型为 RootItem
+        assertTrue(ts.contains("export type Root = RootItem[];"), ts)
+        assertTrue(ts.contains("export type RootItem = {"), ts)
         assertTrue(ts.contains("  a?: number;"), ts)
         assertTrue(ts.contains("  b?: number;"), ts)
     }
@@ -116,7 +119,9 @@ class JsonToTsGeneratorTest {
             "Root",
             """{"items":[{"id":1},{"id":null}]}"""
         )
-        assertTrue(ts.contains("  id: number;"), ts)
+        // 同字段既有具体类型（number）又有 null：null 不再按 key 猜测成可能冲突的类型，
+        // 而是作为 | null 附加，体现字段可空语义
+        assertTrue(ts.contains("  id: number | null;"), ts)
     }
 
     @Test
@@ -183,9 +188,11 @@ class JsonToTsGeneratorTest {
     }
 
     @Test
-    fun `顶层数组直接生成 Root 对象类型`() {
+    fun `顶层数组直接生成 Root 数组类型，元素为 RootItem`() {
         val ts = generator.generate("Root", """[{"id":1,"name":"x"}]""")
-        assertTrue(ts.contains("export type Root = {"), ts)
+        // 修复后：顶层数组 Root 必须是数组类型，元素类型以 Item 后缀命名
+        assertTrue(ts.contains("export type Root = RootItem[];"), ts)
+        assertTrue(ts.contains("export type RootItem = {"), ts)
         assertTrue(ts.contains("  id: number;"), ts)
         assertTrue(ts.contains("  name: string;"), ts)
     }
@@ -193,6 +200,8 @@ class JsonToTsGeneratorTest {
     @Test
     fun `数组内对象字段合并去重`() {
         val ts = generator.generate("Root", """[{"id":1},{"id":2,"name":"x"}]""")
+        // 顶层数组：Root = RootItem[]
+        assertTrue(ts.contains("export type Root = RootItem[];"), ts)
         assertTrue(ts.contains("  id: number;"), ts)
         assertTrue(ts.contains("  name?: string;"), ts)
     }
@@ -205,6 +214,7 @@ class JsonToTsGeneratorTest {
             "Root",
             """[{"a":123,"children":[]},{"a":123,"children":[{"b":456}]}]"""
         )
+        assertTrue(ts.contains("export type Root = RootItem[];"), ts)
         assertTrue(ts.contains("export type Child = {"), ts)
         assertTrue(ts.contains("  b: number;"), ts)
         assertTrue(ts.contains("  children: Child[];"), ts)
@@ -218,8 +228,46 @@ class JsonToTsGeneratorTest {
             "Root",
             """[{"a":1,"children":[{"b":2}]},{"a":3,"children":[]}]"""
         )
+        assertTrue(ts.contains("export type Root = RootItem[];"), ts)
         assertTrue(ts.contains("  children: Child[];"), ts)
         assertFalse(ts.contains("unknown[]"), ts)
+    }
+
+    @Test
+    fun `数组对象同字段数组与 null 合并为可空具体数组`() {
+        // selectedLabelList 在第一个元素是 [{a:123}] -> SelectedLabel[]，
+        // 在第二个元素是 null。null 不应按 key 猜成 string 与 SelectedLabel[] 联合，
+        // 而应作为 | null 附加，最终为 SelectedLabel[] | null
+        val ts = generator.generate(
+            "Root",
+            """[{"selectedLabelList":[{"a":123}]},{"selectedLabelList":null}]"""
+        )
+        // 修复后：顶层数组 -> Root = RootItem[]；元素类型名不再占用 Root
+        assertTrue(ts.contains("export type Root = RootItem[];"), ts)
+        assertTrue(ts.contains("export type RootItem = {"), ts)
+        assertTrue(ts.contains("export type SelectedLabel = {"), ts)
+        assertTrue(ts.contains("  a: number;"), ts)
+        assertTrue(ts.contains("  selectedLabelList: SelectedLabel[] | null;"), ts)
+        // 不应出现按 key 误猜的 string
+        assertFalse(ts.contains("string"), ts)
+    }
+
+    @Test
+    fun `顶层基本类型数组生成 RootItem 数组类型`() {
+        val ts = generator.generate("Root", """[1,2,3]""")
+        assertTrue(ts.contains("export type Root = number[];"), ts)
+    }
+
+    @Test
+    fun `顶层混合基本类型数组加括号`() {
+        val ts = generator.generate("Root", """[1,"a",true]""")
+        assertTrue(ts.contains("export type Root = (number | string | boolean)[];"), ts)
+    }
+
+    @Test
+    fun `顶层空数组为 unknown 数组`() {
+        val ts = generator.generate("Root", """[]""")
+        assertTrue(ts.contains("export type Root = unknown[];"), ts)
     }
 
     @Test
@@ -345,8 +393,9 @@ class JsonToTsGeneratorTest {
             "Root",
             """{"list":[{"id":null,"name":null},{"id":2,"remark":null}]}"""
         )
-        assertTrue(ts.contains("  id: number;"), ts)
-        // name / remark 只在部分元素出现 -> 可选，且 null 被推断为 string
+        // id 在两个元素都出现：第一个 null、第二个 number -> number | null
+        assertTrue(ts.contains("  id: number | null;"), ts)
+        // name / remark 只在单个元素出现且为 null -> 可选，按 key 猜测为 string
         assertTrue(ts.contains("  name?: string;"), ts)
         assertTrue(ts.contains("  remark?: string;"), ts)
     }

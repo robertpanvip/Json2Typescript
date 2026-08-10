@@ -8,8 +8,6 @@ group = "com.pan"
 version = "1.2.3"
 
 repositories {
-    maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }
-    maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/gradle-plugins/") }
     maven { url = uri("https://maven.aliyun.com/repository/public") }
     maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
     mavenCentral()

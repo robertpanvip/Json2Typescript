@@ -31,9 +31,12 @@ class JsonToTsGenerator {
         return when {
             node.isObject -> parseObject(typeName, node)
             node.isArray -> {
-                // 顶层数组：元素对象注册在 typeName 下（见 inferArrayItemType）；
-                // 空数组根等无元素对象的情况兜底注册数组类型（如 unknown[]）
-                val arrType = parseArray(typeName, node, null)
+                // 顶层数组：用 typeName+Item 作为元素类型名，
+                // 避免 typeName 被 inferArrayItemType 内部注册成元素对象类型，
+                // 从而导致 definitions.putIfAbsent(typeName, arrType) 无法覆盖，
+                // 最终 Root 丢失数组包装（变成裸对象而非对象数组）。
+                val itemTypeName = typeName + "Item"
+                val arrType = parseArray(itemTypeName, node, null)
                 definitions.putIfAbsent(typeName, arrType)
                 typeName
             }
@@ -83,35 +86,52 @@ class JsonToTsGenerator {
             return resolveUnion(types)
         }
 
-        val fieldTypes = mutableMapOf<String, MutableSet<String>>()
+        // 区分收集：非 null 值的实际类型 vs null 值标记
+        // 这样合并时，若同字段既有具体类型又有 null，直接 | null，
+        // 而不是把 null 按 key 猜成可能冲突的类型（如 selectedLabelList:null 被猜成 string）
+        val fieldConcreteTypes = mutableMapOf<String, MutableSet<String>>()
+        val fieldHasNull = mutableMapOf<String, Boolean>()
         val fieldCount = mutableMapOf<String, Int>()
 
         nonNull.forEach { obj ->
             obj.properties().forEach { (fieldKey, value) ->
-                val fieldType = resolveType(
-                    NameUtils.singularize(fieldKey),
-                    value,
-                    fieldKey
-                )
-
-                fieldTypes
-                    .computeIfAbsent(fieldKey) { mutableSetOf() }
-                    .add(fieldType)
-
                 fieldCount[fieldKey] = fieldCount.getOrDefault(fieldKey, 0) + 1
+
+                if (value.isNull) {
+                    // null 不立即按 key 猜测：等合并时根据是否存在具体类型再决定
+                    fieldHasNull[fieldKey] = true
+                } else {
+                    val fieldType = resolveType(
+                        NameUtils.singularize(fieldKey),
+                        value,
+                        fieldKey
+                    )
+                    fieldConcreteTypes
+                        .computeIfAbsent(fieldKey) { mutableSetOf() }
+                        .add(fieldType)
+                }
             }
         }
 
         val fieldMap = LinkedHashMap<String, String>()
         val sb = StringBuilder("{\n")
-        fieldTypes.forEach { (fieldKey, types) ->
+        fieldCount.keys.forEach { fieldKey ->
             val optional = fieldCount[fieldKey] != nonNull.size
             val optionalMark = if (optional) "?" else ""
 
-            // 同一字段在数组不同元素中出现 unknown[] / unknown / any 等「无法推断」通配类型时，
-            // 若存在更具体的类型（如空数组 [] -> unknown[] 与 [{b:1}] -> Child[] 同列），
-            // 丢弃通配类型，避免产生 unknown[] | Child[] 这种无意义联合。
-            val union = resolveUnion(types)
+            val concrete = fieldConcreteTypes[fieldKey] ?: emptySet()
+            val hasNull = fieldHasNull[fieldKey] == true
+
+            val union = if (concrete.isEmpty()) {
+                // 该字段在所有出现位置都是 null：按 key 猜测兜底，猜不到则 null
+                TypeGuesser.guess(fieldKey) ?: "null"
+            } else {
+                // 存在具体类型：null 不再按 key 猜测（避免猜出 string 等与实际冲突的类型），
+                // 而是作为 | null 附加，体现字段可空语义
+                val concreteUnion = resolveUnion(concrete)
+                if (hasNull) "$concreteUnion | null" else concreteUnion
+            }
+
             val tsKey = TsKeyUtils.toTsKey(fieldKey)
             fieldMap[tsKey] = union
             sb.append("  $tsKey$optionalMark: $union;\n")

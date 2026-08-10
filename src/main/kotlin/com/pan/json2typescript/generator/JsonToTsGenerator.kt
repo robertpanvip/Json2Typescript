@@ -21,7 +21,7 @@ class JsonToTsGenerator {
         parseNode(rootName, root)
 
         return definitions.entries.joinToString("\n\n") {
-            "export type ${it.key} = ${it.value}"
+            "export type ${it.key} = ${it.value};"
         }
     }
 

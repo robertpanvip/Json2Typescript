@@ -198,6 +198,39 @@ class JsonToTsGeneratorTest {
     }
 
     @Test
+    fun `数组同字段空数组与具体类型统一为具体类型`() {
+        // 同一字段在数组不同元素中：空数组 [] -> unknown[] 与 [{b:456}] -> Child[]，
+        // 应统一为 Child[]，而非产生 unknown[] | Child[] 无意义联合
+        val ts = generator.generate(
+            "Root",
+            """[{"a":123,"children":[]},{"a":123,"children":[{"b":456}]}]"""
+        )
+        assertTrue(ts.contains("export type Child = {"), ts)
+        assertTrue(ts.contains("  b: number;"), ts)
+        assertTrue(ts.contains("  children: Child[];"), ts)
+        assertFalse(ts.contains("unknown[]"), ts)
+    }
+
+    @Test
+    fun `数组同字段空数组在后仍统一为具体类型`() {
+        // 顺序倒置：具体类型在前、空数组在后，同样应统一为 Child[]
+        val ts = generator.generate(
+            "Root",
+            """[{"a":1,"children":[{"b":2}]},{"a":3,"children":[]}]"""
+        )
+        assertTrue(ts.contains("  children: Child[];"), ts)
+        assertFalse(ts.contains("unknown[]"), ts)
+    }
+
+    @Test
+    fun `非对象数组空数组元素与具体类型统一`() {
+        // 非对象数组分支：[1, []] -> number | unknown[]，应统一为 number（inline 字段类型）
+        val ts = generator.generate("Root", """{"vals":[1,[]]}""")
+        assertTrue(ts.contains("  vals: number[];"), ts)
+        assertFalse(ts.contains("unknown[]"), ts)
+    }
+
+    @Test
     fun `数字与布尔混合字段`() {
         val ts = generator.generate(
             "Root",

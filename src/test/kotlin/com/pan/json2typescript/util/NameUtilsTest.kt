@@ -110,10 +110,25 @@ class NameUtilsTest {
         "fooBar, FooBar",
         "123abc, I123abc",
         "2fa, I2fa",
-        "a, A"
+        "a, A",
+        // 纯符号 key：剥离非字母数字后为空，默认回退为 Field
+        "., Field",
+        ".., Field",
+        "...something, Something",
+        "a.b.c, ABC",
+        "__proto__, Proto"
     )
     fun `toTypeName 测试`(input: String, expected: String) {
         assertEquals(expected, NameUtils.toTypeName(input), "input=$input")
+    }
+
+    @Test
+    fun `toTypeName - 纯特殊字符 key 回退为 Field`() {
+        // 这些 key 拆分后非字母数字完全剔除后都应该为空串，要回退到 "Field"
+        assertEquals("Field", NameUtils.toTypeName("."))
+        assertEquals("Field", NameUtils.toTypeName(".."))
+        assertEquals("Field", NameUtils.toTypeName("/@#$"))
+        assertEquals("Field", NameUtils.toTypeName("!!!????####"))
     }
 
     @Test

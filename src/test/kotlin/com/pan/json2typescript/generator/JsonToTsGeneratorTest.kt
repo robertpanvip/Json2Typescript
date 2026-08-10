@@ -480,4 +480,33 @@ class JsonToTsGeneratorTest {
         assertTrue(ts.contains("  \"123abc\": I123abcItem[];"), ts)
     }
 
+    @Test
+    fun `Bug1 - key 为纯点号不生成空类型名`() {
+        val ts = generator.generate("Root", """{".": {}}""")
+        // 点号 key 在 toTypeName 后会回退为 Field，不再是空串
+        assertTrue(ts.contains("export type Field = {"), ts)
+        assertFalse(ts.contains("export type  ="), ts)   // 绝不能有 export type  = ...
+        assertTrue(ts.contains("  \".\": Field;"), ts)
+        assertTrue(ts.contains("export type Root = {"), ts)
+    }
+
+    @Test
+    fun `Bug2 - key 含内部双引号会正确转义`() {
+        // 在 JSON 里写出这个 key 本身需要转义：key 是 k:{"uid":"uuid"}，
+        // 所以在 JSON 字符串里写成 "{\"key...\": {}}"
+        val literal = "{\"k:{\\\"uid\\\":\\\"edde99d7-8e7e-41f2-9d0a-9ef7de8122c1\\\"}\": {}}"
+        val ts = generator.generate("Root", literal)
+        // 生成的 TS 里，key 内部的 " 必须再被转义为 \" 才能合法出现在双引号字面量中
+        // 最终呈现为："k:{\"uid\":\"...uuid...\"}"
+        val keyLine = ts.lines().firstOrNull { it.contains("k:") && it.contains("uid") }
+        assertTrue(keyLine != null, "未找到目标key行. full ts=\n$ts")
+        val line = keyLine!!
+        // 在 TypeScript 里：key 整体包在 " ... " 内，key 内部的 " 需要写成 \"
+        // 我们的断言：必须出现 \"（即反斜杠+双引号），不能出现裸的 " 破坏字符串
+        assertTrue(line.contains("\\\"uid"), "key 行中的 uid 前必须是带转义的双引号: $line")
+        // 该对象值的类型名：key 内有数字/字母（k, uid, edde99d7...），所以不是 Field，而是拼出来的大驼峰
+        assertTrue(line.contains("KUidEdde99d78e7e41f29d0a9ef7de8122c1;"), "对象字段值类型名应为 KUid...: $line")
+        assertTrue(ts.contains("export type KUidEdde99d78e7e41f29d0a9ef7de8122c1 = {"), ts)
+        assertFalse(ts.contains("export type  ="), ts)
+    }
 }

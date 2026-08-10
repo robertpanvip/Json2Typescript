@@ -89,13 +89,17 @@ object NameUtils {
      *
      * 数字开头的类型名在 TS 中非法（不能以数字开头），自动加 I 前缀：
      * 123abc -> I123abc、2fa -> I2fa
+     *
+     * 如果去掉所有非字母数字字符后为空（比如 key 本身只有 "."、".."、"@#$" 等），
+     * 则回退到默认类型名 "Field"，避免生成空名字的 export type。
      */
     fun toTypeName(key: String): String {
         val raw = key
             .split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.isNotEmpty() }
             .joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }
-        return if (raw.isNotEmpty() && raw.first().isDigit()) "I$raw" else raw
+            .ifEmpty { "Field" }
+        return if (raw.first().isDigit()) "I$raw" else raw
     }
 
     /** 集合词：作为字段名后缀时剥离（itemList -> item、user_list -> user），只取元素名 */

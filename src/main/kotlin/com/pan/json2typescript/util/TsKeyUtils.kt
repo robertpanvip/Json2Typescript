@@ -29,7 +29,11 @@ object TsKeyUtils {
             return key
         }
 
-        // 否则一律加引号
-        return "\"$key\""
+        // 否则一律加引号，并对内部的反斜杠和双引号进行转义
+        // 这样 key 内本身含有 \ 或 " 时不会破坏外层引号
+        val escaped = key
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+        return "\"$escaped\""
     }
 }

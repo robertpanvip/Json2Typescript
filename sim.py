@@ -216,7 +216,7 @@ class Generator:
         self.structureToName.clear()
         root = json.loads(jsonStr)
         self.parseNode(rootName, root)
-        return "\n\n".join(f"export type {k} = {v}" for k, v in self.definitions.items())
+        return "\n\n".join(f"export type {k} = {v};" for k, v in self.definitions.items())
 
     def parseNode(self, typeName, node):
         if typeName in self.definitions:

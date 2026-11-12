@@ -26,11 +26,8 @@ dependencies {
         // bundledPlugin("com.intellij.java")
     }
 
-    // Jackson —— IntelliJ 2026+ 不再向插件 classloader 暴露平台内置的 Jackson，
-    // 必须显式声明并打包进插件的 lib/ 目录
-    implementation("com.fasterxml.jackson.core:jackson-core:2.18.2")
-    implementation("com.fasterxml.jackson.core:jackson-annotations:2.18.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+    // Gson —— 单 jar 轻量（~290KB），自带 lenient 模式，支持单引号/注释/尾逗号/无引号 key
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // 纯 JVM 单元测试：不依赖 IntelliJ 测试框架，跑得快
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")

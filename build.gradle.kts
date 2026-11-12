@@ -8,8 +8,8 @@ group = "com.pan"
 version = "1.2.6"
 
 repositories {
-    maven { url = uri("https://maven.aliyun.com/repository/public") }
-    maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+    maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }
+    maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/gradle-plugin/") }
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
@@ -25,6 +25,12 @@ dependencies {
         // Add necessary plugin dependencies for compilation here, example:
         // bundledPlugin("com.intellij.java")
     }
+
+    // Jackson —— IntelliJ 2026+ 不再向插件 classloader 暴露平台内置的 Jackson，
+    // 必须显式声明并打包进插件的 lib/ 目录
+    implementation("com.fasterxml.jackson.core:jackson-core:2.18.2")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:2.18.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 
     // 纯 JVM 单元测试：不依赖 IntelliJ 测试框架，跑得快
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")

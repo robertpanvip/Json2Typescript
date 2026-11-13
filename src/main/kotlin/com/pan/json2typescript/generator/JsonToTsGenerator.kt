@@ -102,6 +102,8 @@ class JsonToTsGenerator(
         val fieldConcreteTypes = mutableMapOf<String, MutableSet<String>>()
         val fieldHasNull = mutableMapOf<String, Boolean>()
         val fieldCount = mutableMapOf<String, Int>()
+        // 额外：收集每个字段的所有原始字符串值，用于字段级枚举检测
+        val fieldStringValues = mutableMapOf<String, MutableList<String>>()
 
         nonNull.forEach { obj ->
             obj.asJsonObject.entrySet().forEach { (fieldKey, value) ->
@@ -110,6 +112,19 @@ class JsonToTsGenerator(
                 if (value.isJsonNull) {
                     // null 不立即按 key 猜测：等合并时根据是否存在具体类型再决定
                     fieldHasNull[fieldKey] = true
+                } else if (value.isJsonPrimitive && value.asJsonPrimitive.isString) {
+                    // 收集原始字符串值，方便后面判断字段级枚举
+                    fieldStringValues
+                        .computeIfAbsent(fieldKey) { mutableListOf() }
+                        .add(value.asJsonPrimitive.asString)
+                    val fieldType = resolveType(
+                        NameUtils.singularize(fieldKey),
+                        value,
+                        fieldKey
+                    )
+                    fieldConcreteTypes
+                        .computeIfAbsent(fieldKey) { mutableSetOf() }
+                        .add(fieldType)
                 } else {
                     val fieldType = resolveType(
                         NameUtils.singularize(fieldKey),
@@ -136,10 +151,18 @@ class JsonToTsGenerator(
                 // 该字段在所有出现位置都是 null：按 key 猜测兜底，猜不到则 null
                 TypeGuesser.guess(fieldKey) ?: "null"
             } else {
-                // 存在具体类型：null 不再按 key 猜测（避免猜出 string 等与实际冲突的类型），
-                // 而是作为 | null 附加，体现字段可空语义
-                val concreteUnion = resolveUnion(concrete)
-                if (hasNull) "$concreteUnion | null" else concreteUnion
+                // 字段级枚举检测：收集到了重复的字符串值 → 字面量联合
+                val literalEnum = fieldStringValues[fieldKey]?.let {
+                    tryInferFieldLiteralUnion(it)
+                }
+                if (literalEnum != null) {
+                    if (hasNull) "$literalEnum | null" else literalEnum
+                } else {
+                    // 存在具体类型：null 不再按 key 猜测（避免猜出 string 等与实际冲突的类型），
+                    // 而是作为 | null 附加，体现字段可空语义
+                    val concreteUnion = resolveUnion(concrete)
+                    if (hasNull) "$concreteUnion | null" else concreteUnion
+                }
             }
 
             val tsKey = TsKeyUtils.toTsKey(fieldKey)
@@ -152,23 +175,50 @@ class JsonToTsGenerator(
     }
 
     /**
+     * 字段级字面量联合检测：与数组级逻辑相同，但输入是字段的原始字符串列表。
+     * 例如 fieldKey="type" 在数组元素中出现 ["done","ok","done","todo"] → "done" | "ok" | "todo"
+     */
+    private fun tryInferFieldLiteralUnion(allStrings: List<String>): String? {
+        if (options.enumThreshold <= 0) return null
+        val unique = allStrings.distinct()
+        if (unique.size <= 1 || unique.size > options.enumThreshold) return null
+        val hasDuplicates = unique.size < allStrings.size
+        if (!hasDuplicates) return null
+        val looksLikeEnum = unique.all { isEnumLike(it) } && unique.any { it.length >= 3 }
+        if (!looksLikeEnum) return null
+        return unique.joinToString(" | ") { "\"${escapeString(it)}\"" }
+    }
+
+    /**
      * 纯字符串数组 → 字面量联合类型。
      * 触发条件（全部满足）：
      *   1. 所有非 null 元素都是字符串
-     *   2. 唯一值数量 ≥ 2 且 ≤ enumThreshold
-     *   3. 每个值都是"像枚举"的标识符（小写字母开头、字母/数字/下划线、≤20字符）
-     *      —— 避免普通数据 ["a","b"]、["Alice","Bob"] 被误识别
-     * 超过阈值、关闭检测（threshold=0）、或值看起来不像枚举时返回 null，由调用方回退为 string。
+     *   2. 至少有一个值**重复出现**（枚举的铁证）——["done","ok","done","todo"] 可判枚举，
+     *      而 ["Alice","Bob","Charlie"] 全唯一只是普通字符串数据
+     *   3. 唯一值数量 ≥ 2 且 ≤ enumThreshold
+     *   4. 每个值都是"像枚举"的标识符（字母开头、字母/数字/下划线/连字符、≤20字符）
+     *      —— 避免把 ["a","b","a"] 这种测试/占位数组误判为枚举
+     *   5. 至少一个值长度 ≥ 3（排除单字母 ["a","b","a"]）
+     *
+     * 超过阈值、关闭检测（threshold=0）、没有重复、或值看起来不像枚举时返回 null，
+     * 由调用方回退为 string。
+     *
+     * 注意：这里只列"已观察到"的几个值。后端真实枚举可能不止这些（用户可能只拷贝了部分数据），
+     * 所以输出是联合类型 `'done' | 'ok' | 'todo'`，而不是 TS enum 声明。
      */
     private fun tryInferLiteralUnion(nonNull: List<JsonElement>): String? {
         if (options.enumThreshold <= 0) return null
         if (nonNull.any { !it.isJsonPrimitive || !it.asJsonPrimitive.isString }) return null
 
-        val unique = nonNull.map { it.asJsonPrimitive.asString }.distinct()
+        val allStrings = nonNull.map { it.asJsonPrimitive.asString }
+        val unique = allStrings.distinct()
         if (unique.size <= 1 || unique.size > options.enumThreshold) return null
 
-        // "像枚举"的启发式：每个值都是合法的 TS 标识符（或接近），且至少一个值 ≥ 3 字符
-        // —— 避免把 ["a","b"]、["x","y","z"] 这种测试/占位数组误判为枚举
+        // 必须有重复值（枚举的铁证）——完全唯一的字符串数组通常是数据，不是枚举
+        val hasDuplicates = unique.size < allStrings.size
+        if (!hasDuplicates) return null
+
+        // 每个值都像枚举标识符
         val looksLikeEnum = unique.all { isEnumLike(it) } && unique.any { it.length >= 3 }
         if (!looksLikeEnum) return null
 

@@ -21,7 +21,7 @@ class JsonParserTest {
     }
 
     @Test
-    fun `顶层裸标量被拒绝（插件只处理对象/数组）`() {
+    fun `顶层裸标量被拒绝 插件只处理对象或数组`() {
         assertThrows(Exception::class.java) { JsonParser.parse("\"abc\"") }
         assertThrows(Exception::class.java) { JsonParser.parse("1.5") }
         assertThrows(Exception::class.java) { JsonParser.parse("true") }

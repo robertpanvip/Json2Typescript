@@ -22,11 +22,21 @@ object JsonParser {
      */
     fun parse(json: String): JsonElement {
         val cleaned = stripTrailingCommas(json.trim())
-        return JsonReader(StringReader(cleaned)).use { reader ->
+        val element = JsonReader(StringReader(cleaned)).use { reader ->
             reader.setStrictness(Strictness.LENIENT)
             gson.fromJson(reader, JsonElement::class.java)
-                ?: throw IllegalArgumentException("Empty JSON")
         }
+        when {
+            element == null ->
+                throw IllegalArgumentException("Empty JSON")
+            !element.isJsonObject && !element.isJsonArray ->
+                // LENIENT 太宽：`not json at all` 会被当成未加引号字符串解析
+                // 这个插件只处理顶层对象/数组（生成 TS interface 才有意义）
+                throw IllegalArgumentException(
+                    "Invalid JSON: top-level value must be object or array"
+                )
+        }
+        return element
     }
 
     /**

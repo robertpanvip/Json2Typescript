@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.pan"
-version = "1.3.0"
+version = "1.3.1"
 
 repositories {
     maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }

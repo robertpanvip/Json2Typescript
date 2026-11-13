@@ -153,9 +153,12 @@ class JsonToTsGenerator(
 
     /**
      * 纯字符串数组 → 字面量联合类型。
-     * 条件：所有非 null 元素都是字符串，且唯一值数量 <= 阈值。
-     * 超过阈值或关闭检测（threshold=0）时返回 null，由调用方回退为 string。
-     * 示例：["pending", "done"] → "pending" | "done"
+     * 触发条件（全部满足）：
+     *   1. 所有非 null 元素都是字符串
+     *   2. 唯一值数量 ≥ 2 且 ≤ enumThreshold
+     *   3. 每个值都是"像枚举"的标识符（小写字母开头、字母/数字/下划线、≤20字符）
+     *      —— 避免普通数据 ["a","b"]、["Alice","Bob"] 被误识别
+     * 超过阈值、关闭检测（threshold=0）、或值看起来不像枚举时返回 null，由调用方回退为 string。
      */
     private fun tryInferLiteralUnion(nonNull: List<JsonElement>): String? {
         if (options.enumThreshold <= 0) return null
@@ -164,7 +167,26 @@ class JsonToTsGenerator(
         val unique = nonNull.map { it.asJsonPrimitive.asString }.distinct()
         if (unique.size <= 1 || unique.size > options.enumThreshold) return null
 
+        // "像枚举"的启发式：每个值都是合法的 TS 标识符（或接近），且至少一个值 ≥ 3 字符
+        // —— 避免把 ["a","b"]、["x","y","z"] 这种测试/占位数组误判为枚举
+        val looksLikeEnum = unique.all { isEnumLike(it) } && unique.any { it.length >= 3 }
+        if (!looksLikeEnum) return null
+
         return unique.joinToString(" | ") { "\"${escapeString(it)}\"" }
+    }
+
+    /**
+     * 判断一个字符串值是否"像枚举值"——适合提升为字面量联合。
+     * 宽松标准：长度 1~20，全是字母/数字/下划线，允许连字符（常见 kebab-case 枚举）。
+     * 全数字值（如 "1"、"42"）不算枚举（那是 number 类型的字符串化，通常应保持 string）。
+     */
+    private fun isEnumLike(v: String): Boolean {
+        if (v.isEmpty() || v.length > 20) return false
+        // 必须以字母开头（排除纯数字/符号开头）
+        val first = v.firstOrNull() ?: return false
+        if (!first.isLetter()) return false
+        // 允许字母/数字/下划线/连字符
+        return v.all { it.isLetterOrDigit() || it == '_' || it == '-' }
     }
 
     private fun escapeString(s: String): String =

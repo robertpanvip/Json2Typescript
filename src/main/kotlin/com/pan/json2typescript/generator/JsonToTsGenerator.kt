@@ -20,12 +20,23 @@ class JsonToTsGenerator(
     fun generate(rootName: String, json: String): String {
         definitions.clear()
         structureToName.clear()
+        declaredDateAliases.clear()
         val root = JsonParser.parse(json)
         parseNode(rootName, root)
 
-        return definitions.entries.joinToString("\n\n") {
-            "export type ${it.key} = ${it.value};"
+        val sb = StringBuilder()
+        // 公共日期别名声明（只声明一次，放在文件开头）
+        val dateDecls = dateAliasDeclarations(declaredDateAliases)
+        if (dateDecls.isNotEmpty()) {
+            sb.appendLine("// Date / timestamp string aliases — declared once, referenced by business types below")
+            dateDecls.forEach { sb.appendLine(it) }
+            sb.appendLine()
         }
+        // 业务 type definitions
+        sb.append(definitions.entries.joinToString("\n\n") {
+            "export type ${it.key} = ${it.value};"
+        })
+        return sb.toString()
     }
 
     private fun parseNode(typeName: String, node: JsonElement): String {
@@ -326,7 +337,11 @@ class JsonToTsGenerator(
             if (p.isString) {
                 // 日期字符串识别（先看 key 有没有日期语义，再看值的格式）
                 if (options.detectDate && key != null && TypeGuesser.isDateKey(key)) {
-                    if (looksLikeDate(p.asString)) return "Date"
+                    val alias = dateAliasFor(p.asString)
+                    if (alias != null) {
+                        registerDateAlias(alias)
+                        return alias
+                    }
                 }
                 return "string"
             }
@@ -336,25 +351,65 @@ class JsonToTsGenerator(
         return "any"
     }
 
-    // ---------- 日期识别 ----------
+    /** 已经声明过的日期别名集合：确保文件头只输出一次 */
+    private val declaredDateAliases = LinkedHashSet<String>()
 
+    /** 在 definitions 最前面注册日期别名声明（先收集后输出） */
+    private fun registerDateAlias(alias: String) {
+        declaredDateAliases.add(alias)
+    }
+
+    /**
+     * 根据实际值匹配的日期格式返回对应的 type alias 名称。
+     * 匹配顺序：先精确识别 ISO 8601 各变体，最后 fallback 为通用 DateString。
+     */
     companion object {
-        /** ISO 8601 / RFC 3339 日期时间：2024-01-15 / 2024-01-15T10:30:00Z / 2024-01-15T10:30:00+08:00 */
-        private val ISO_DATETIME_PATTERNS: List<Pattern> = listOf(
-            // 严格 RFC 3339 / ISO 8601
-            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:?\\d{2})?$"),
-            // 纯日期
-            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$"),
-            // 常见后端格式：yyyy/MM/dd HH:mm:ss、yyyy-MM-dd HH:mm:ss
-            Pattern.compile("^\\d{4}[-/]\\d{2}[-/]\\d{2}[ T]\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$"),
-        )
+        private val RE_ISO_FULL = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:?\\d{2})$")
+        private val RE_PLAIN_DATE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$")
+        private val RE_TIMESTAMP = Pattern.compile("^\\d{4}[-/]\\d{2}[-/]\\d{2}[ T]\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$")
+
+        fun dateAliasFor(s: String): String? {
+            if (s.length < 8 || s.length > 40) return null
+            return when {
+                RE_ISO_FULL.matcher(s).matches() -> "DateString"
+                RE_PLAIN_DATE.matcher(s).matches() -> "PlainDateString"
+                RE_TIMESTAMP.matcher(s).matches() -> "TimestampString"
+                else -> null
+            }
+        }
 
         /**
-         * 字符串看起来像日期格式。只做格式匹配，不做日历合法性校验（避免 9999-99-99 这种极端值）。
+         * 根据已识别的别名集合返回 TS 模板字面量声明。
+         * 输出顺序：PlainDateString → DateString → TimestampString
+         *
+         * 说明：TS template literal type 里 `${number}` 匹配**一个**数字，
+         * 所以 YYYY 需要写成 `${number}${number}${number}${number}`（4 位）。
          */
-        fun looksLikeDate(s: String): Boolean {
-            if (s.length < 8 || s.length > 40) return false
-            return ISO_DATETIME_PATTERNS.any { it.matcher(s).matches() }
+        fun dateAliasDeclarations(aliases: Set<String>): List<String> {
+            if (aliases.isEmpty()) return emptyList()
+            val out = mutableListOf<String>()
+            if ("PlainDateString" in aliases) {
+                out.add(
+                    """export type PlainDateString = `${'$'}{number}${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}`;"""
+                )
+            }
+            if ("DateString" in aliases) {
+                // RFC 3339 / ISO 8601 完整格式：含可选毫秒和时区
+                out.add(
+                    """export type DateString =
+  | `${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}T${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}Z`
+  | `${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}T${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}.${'$'}{number}Z`
+  | `${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}T${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}+${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}`
+  | `${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}T${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}`;"""
+                )
+            }
+            if ("TimestampString" in aliases) {
+                // 常见后端 timestamp：yyyy-MM-dd HH:mm:ss 或 yyyy/MM/dd HH:mm:ss
+                out.add(
+                    """export type TimestampString = `${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number} ${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}:${'$'}{number}${'$'}{number}`;"""
+                )
+            }
+            return out
         }
     }
 }

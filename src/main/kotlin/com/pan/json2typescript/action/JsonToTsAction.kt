@@ -18,16 +18,25 @@ class JsonToTsAction : AnAction() {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
 
-        val raw = CopyPasteManager.getInstance()
-            .getContents<String>(DataFlavor.stringFlavor)
-            ?: return
+        // 优先：编辑器选中的文本（用户直接在 .json 文件或接口响应里选中要转的块）
+        // 没有选中内容时降级到剪贴板（原行为）
+        val raw = getSelection(editor)
+            ?: getClipboard()
+            ?: run {
+                Messages.showErrorDialog(
+                    project,
+                    "Please select JSON text in the editor or copy JSON to clipboard.",
+                    "JSON to TypeScript"
+                )
+                return
+            }
 
         val json = raw.trim()
 
         if (!json.startsWith("{") && !json.startsWith("[")) {
             Messages.showErrorDialog(
                 project,
-                "The clipboard content is not valid JSON.",
+                "The input is not valid JSON (must start with { or [).",
                 "JSON to TypeScript"
             )
             return
@@ -35,21 +44,36 @@ class JsonToTsAction : AnAction() {
 
         val ts = try {
             JsonToTsGenerator().generate("Root", json)
-        } catch (e: Exception) {
+        } catch (ex: Exception) {
             Messages.showErrorDialog(
                 project,
-                e.message ?: "Failed to parse JSON.",
+                ex.message ?: "Failed to parse JSON.",
                 "JSON to TypeScript"
             )
             return
         }
 
         WriteCommandAction.runWriteCommandAction(project) {
-            editor.document.insertString(
-                editor.caretModel.offset,
-                ts
-            )
+            val selModel = editor.selectionModel
+            if (selModel.hasSelection()) {
+                // 有选中内容 → 替换选中为生成的 TS 类型
+                editor.document.replaceString(
+                    selModel.selectionStart,
+                    selModel.selectionEnd,
+                    ts
+                )
+            } else {
+                editor.document.insertString(editor.caretModel.offset, ts)
+            }
         }
     }
 
+    private fun getSelection(editor: com.intellij.openapi.editor.Editor): String? {
+        val sel = editor.selectionModel.selectedText
+        return sel?.let { if (it.isBlank()) null else it }
+    }
+
+    private fun getClipboard(): String? = CopyPasteManager.getInstance()
+        .getContents<String>(DataFlavor.stringFlavor)
+        ?.let { if (it.isBlank()) null else it }
 }

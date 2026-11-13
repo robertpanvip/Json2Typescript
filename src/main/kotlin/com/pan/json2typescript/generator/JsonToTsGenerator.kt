@@ -7,8 +7,11 @@ import com.pan.json2typescript.util.TsKeyUtils
 import com.pan.json2typescript.util.TypeGuesser
 import java.lang.StringBuilder
 import java.util.*
+import java.util.regex.Pattern
 
-class JsonToTsGenerator {
+class JsonToTsGenerator(
+    private val options: GeneratorOptions = GeneratorOptions()
+) {
 
     private val definitions = LinkedHashMap<String, String>()
     // 结构签名 -> 已定义的类型名：用于鸭子类型去重（结构相同的对象复用同一类型）
@@ -47,6 +50,8 @@ class JsonToTsGenerator {
         }
     }
 
+    private fun fieldPrefix(): String = if (options.readonly) "readonly " else ""
+
     private fun parseObject(typeName: String, node: JsonElement): String {
         val fieldMap = LinkedHashMap<String, String>()
         node.asJsonObject.entrySet().forEach { (key, value) ->
@@ -59,7 +64,9 @@ class JsonToTsGenerator {
         }
 
         val sb = StringBuilder("{\n")
-        fieldMap.forEach { (tsKey, fieldType) -> sb.append("  $tsKey: $fieldType;\n") }
+        fieldMap.forEach { (tsKey, fieldType) ->
+            sb.append("  ${fieldPrefix()}$tsKey: $fieldType;\n")
+        }
         sb.append("}")
         val body = sb.toString()
         return registerOrReuse(typeName, body, signatureOf(fieldMap))
@@ -79,6 +86,10 @@ class JsonToTsGenerator {
 
         // 非对象数组（primitive / array 混合，已排除 null）
         if (!nonNull.all { it.isJsonObject }) {
+            // 枚举检测：如果是纯字符串数组，且唯一值数量 <= 阈值 → 字面量联合
+            val enumType = tryInferLiteralUnion(nonNull)
+            if (enumType != null) return enumType
+
             val types = nonNull
                 .map { resolveType(typeName, it, key) }
                 .toSet()
@@ -133,12 +144,31 @@ class JsonToTsGenerator {
 
             val tsKey = TsKeyUtils.toTsKey(fieldKey)
             fieldMap[tsKey] = union
-            sb.append("  $tsKey$optionalMark: $union;\n")
+            sb.append("  ${fieldPrefix()}$tsKey$optionalMark: $union;\n")
         }
         sb.append("}")
         val body = sb.toString()
         return registerOrReuse(typeName, body, signatureOf(fieldMap))
     }
+
+    /**
+     * 纯字符串数组 → 字面量联合类型。
+     * 条件：所有非 null 元素都是字符串，且唯一值数量 <= 阈值。
+     * 超过阈值或关闭检测（threshold=0）时返回 null，由调用方回退为 string。
+     * 示例：["pending", "done"] → "pending" | "done"
+     */
+    private fun tryInferLiteralUnion(nonNull: List<JsonElement>): String? {
+        if (options.enumThreshold <= 0) return null
+        if (nonNull.any { !it.isJsonPrimitive || !it.asJsonPrimitive.isString }) return null
+
+        val unique = nonNull.map { it.asJsonPrimitive.asString }.distinct()
+        if (unique.size <= 1 || unique.size > options.enumThreshold) return null
+
+        return unique.joinToString(" | ") { "\"${escapeString(it)}\"" }
+    }
+
+    private fun escapeString(s: String): String =
+        s.replace("\\", "\\\\").replace("\"", "\\\"")
 
     /**
      * 按结构注册或复用类型（鸭子类型）。
@@ -221,13 +251,38 @@ class JsonToTsGenerator {
         }
         if (node.isJsonPrimitive) {
             val p = node.asJsonPrimitive
-            return when {
-                p.isString -> "string"
-                p.isBoolean -> "boolean"
-                p.isNumber -> "number"
-                else -> "any"
+            if (p.isString) {
+                // 日期字符串识别（先看 key 有没有日期语义，再看值的格式）
+                if (options.detectDate && key != null && TypeGuesser.isDateKey(key)) {
+                    if (looksLikeDate(p.asString)) return "Date"
+                }
+                return "string"
             }
+            if (p.isBoolean) return "boolean"
+            if (p.isNumber) return "number"
         }
         return "any"
+    }
+
+    // ---------- 日期识别 ----------
+
+    companion object {
+        /** ISO 8601 / RFC 3339 日期时间：2024-01-15 / 2024-01-15T10:30:00Z / 2024-01-15T10:30:00+08:00 */
+        private val ISO_DATETIME_PATTERNS: List<Pattern> = listOf(
+            // 严格 RFC 3339 / ISO 8601
+            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:?\\d{2})?$"),
+            // 纯日期
+            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$"),
+            // 常见后端格式：yyyy/MM/dd HH:mm:ss、yyyy-MM-dd HH:mm:ss
+            Pattern.compile("^\\d{4}[-/]\\d{2}[-/]\\d{2}[ T]\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$"),
+        )
+
+        /**
+         * 字符串看起来像日期格式。只做格式匹配，不做日历合法性校验（避免 9999-99-99 这种极端值）。
+         */
+        fun looksLikeDate(s: String): Boolean {
+            if (s.length < 8 || s.length > 40) return false
+            return ISO_DATETIME_PATTERNS.any { it.matcher(s).matches() }
+        }
     }
 }

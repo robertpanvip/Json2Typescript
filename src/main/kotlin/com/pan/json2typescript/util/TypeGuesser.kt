@@ -360,4 +360,26 @@ object TypeGuesser {
         token.endsWith("s") && token.length > 2 -> token.dropLast(1)
         else -> token
     }
+
+    /**
+     * 判断 key 是否具有日期时间语义。
+     * 用于辅助日期字符串 → Date 类型的检测（避免把普通字符串误判为 Date）。
+     * 例：createTime / birthday / startAt / publishDate -> true；userName / avatarUrl -> false。
+     */
+    fun isDateKey(key: String): Boolean {
+        val tokens = tokenize(key)
+        if (tokens.isEmpty()) return false
+        // 黑名单：update / candidate / validate 这类以 date 结尾但不是日期字段的词
+        if (DATE_WORDS.intersect(tokens).isNotEmpty()) {
+            // 额外检查：key 的完整小写形式不能以黑名单词结尾
+            val k = key.lowercase().trim()
+            if (DATE_SUFFIX_BLACKLIST.none { k.endsWith(it) }) return true
+        }
+        // substring 兜底：全小写拼接的 createtime / updatetime
+        val k = key.lowercase()
+        if (k.contains("time") || k.endsWith("datetime") ||
+            (k.endsWith("date") && DATE_SUFFIX_BLACKLIST.none { k.endsWith(it) })
+        ) return true
+        return false
+    }
 }

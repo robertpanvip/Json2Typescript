@@ -11,20 +11,25 @@
     <vendor url="https://github.com/robertpanvip/Json2Typescript">Json2Typescript</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
-         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-description.html#plugin-description -->
     <description><![CDATA[
-<p><b>Json2Typescript</b> is a lightweight IntelliJ / WebStorm plugin that converts copied JSON data into TypeScript type definitions with one click.</p>
+<p><b>Json2Typescript</b> is a lightweight IntelliJ / WebStorm plugin that converts JSON into clean TypeScript type definitions — right from the editor, no configuration needed.</p>
 
 <p><b>Features:</b></p>
 <ul>
-  <li>Convert JSON to TypeScript types directly from the editor context menu</li>
-  <li>Support nested objects and arrays</li>
-  <li>Infer union types (e.g. <code>number | null</code>)</li>
-  <li>Automatically mark optional fields (<code>?:</code>)</li>
-  <li>Designed for HTTP / API response data</li>
+  <li><b>One-click conversion</b>: right-click in editor or press <code>Ctrl+Alt+V</code> to convert clipboard or selected JSON.</li>
+  <li><b>Selection-first</b>: if text is selected it's used directly; otherwise falls back to clipboard — no copy-paste required.</li>
+  <li><b>Literal union detection</b>: <code>["pending", "done", "cancelled"]</code> automatically becomes <code>"pending" | "done" | "cancelled"</code>.</li>
+  <li><b>Date string recognition</b>: fields named <code>*Time</code> / <code>*Date</code> with ISO 8601 values are typed as <code>Date</code>.</li>
+  <li><b>Nested objects & arrays</b>: each nesting level gets its own <code>export type</code>, with duck-typing deduplication.</li>
+  <li><b>Bean suffix stripping</b>: backend Java bean names like <code>userVO</code>, <code>orderDTO</code>, <code>createRequest</code> are automatically shortened to <code>User</code>, <code>Order</code>, <code>Create</code>.</li>
+  <li><b>Optional fields auto-marked</b>: fields missing from some array elements become <code>?:</code>.</li>
+  <li><b>Null inference by key</b>: <code>userId: null</code> → <code>number</code>, <code>isDeleted: null</code> → <code>boolean</code>, etc.</li>
+  <li><b>Lenient JSON parsing</b>: single quotes, unquoted keys, comments, trailing commas all accepted — copy from browser / logs without cleanup.</li>
+  <li><b>TS reserved-word quoting</b>: keys named <code>class</code>, <code>default</code>, <code>interface</code> are auto-quoted.</li>
 </ul>
 
-<p>No configuration required. Just copy JSON and generate types instantly.</p>
+<p>Just copy JSON and generate types instantly. Works with clipboard or editor selection.</p>
 ]]></description>
 
 
@@ -42,13 +47,14 @@
                 id="JsonToTsAction"
                 class="com.pan.json2typescript.action.JsonToTsAction"
                 text="JSON to TypeScript"
-                description="Convert JSON to TypeScript types"
+                description="Convert selected JSON or clipboard JSON into TypeScript type definitions"
                 icon="/icon.svg"
         >
             <add-to-group
                     group-id="EditorPopupMenu"
                     anchor="first"
                    />
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt V"/>
         </action>
     </actions>
 </idea-plugin>

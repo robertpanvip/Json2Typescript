@@ -1,14 +1,12 @@
 package com.pan.json2typescript.util
 
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import java.io.StringReader
 
 object JsonParser {
-
-    private val gson = GsonBuilder().create()
 
     /**
      * 宽松模式解析：
@@ -24,10 +22,10 @@ object JsonParser {
         val cleaned = stripTrailingCommas(json.trim())
         val element = JsonReader(StringReader(cleaned)).use { reader ->
             reader.setStrictness(Strictness.LENIENT)
-            gson.fromJson(reader, JsonElement::class.java)
+            JsonParser.parseReader(reader)
         }
         when {
-            element == null ->
+            element.isJsonNull ->
                 throw IllegalArgumentException("Empty JSON")
             !element.isJsonObject && !element.isJsonArray ->
                 // LENIENT 太宽：`not json at all` 会被当成未加引号字符串解析

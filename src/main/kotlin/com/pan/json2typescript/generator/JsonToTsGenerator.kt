@@ -380,43 +380,18 @@ class JsonToTsGenerator(
 
         /**
          * 根据已识别的别名集合返回 TS 声明块。
-         * 输出顺序：PlainDateString → DateString → TimestampString
-         *
-         * 策略：
-         *  - PlainDateString 格式固定（YYYY-MM-DD），用 template literal type 精确表达，
-         *    编译期就能拒绝非法字符串。
-         *  - DateString / TimestampString 变体太多（时区、毫秒、分隔符 T vs 空格、斜杠日期…），
-         *    template literal type 会写得又长又丑还覆盖不全，降级为带名字的 `string` 别名，
-         *    让 IDE 类型提示传达语义（"这是 ISO 日期时间字符串，不是随便什么 string"）。
-         *
-         * 说明：TS template literal type 里 `${number}` 匹配**一个**数字，
-         * 所以 YYYY 要写成 `${number}${number}${number}${number}`。
+         * 所有日期别名都是 `string` 别名——语义通过名字传达（PlainDateString / DateString / TimestampString），
+         * 格式说明写在注释里。统一简洁，避免 template literal type 长度不可控。
          */
         fun dateAliasDeclarations(aliases: Set<String>): List<String> {
             if (aliases.isEmpty()) return emptyList()
             val out = mutableListOf<String>()
-            if ("PlainDateString" in aliases) {
-                out.add(
-                    """// YYYY-MM-DD, e.g. "2024-01-15"
-                       |export type PlainDateString = `${'$'}{number}${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}-${'$'}{number}${'$'}{number}`;"""
-                        .trimMargin()
-                )
-            }
-            if ("DateString" in aliases) {
-                out.add(
-                    """// ISO 8601 / RFC 3339 date-time, e.g. "2024-01-15T10:30:00Z",
-                       |// "2024-01-15T10:30:00.123+08:00", "2024-01-15T10:30:00-05:00"
-                       |export type DateString = string;"""
-                        .trimMargin()
-                )
-            }
-            if ("TimestampString" in aliases) {
-                out.add(
-                    """// "YYYY-MM-DD HH:mm:ss" or "YYYY/MM/DD HH:mm:ss", common Java/SQL timestamp
-                       |export type TimestampString = string;"""
-                        .trimMargin()
-                )
-            }
+            if ("PlainDateString" in aliases) out.add("""// "YYYY-MM-DD", e.g. "2024-01-15"
+export type PlainDateString = string;""")
+            if ("DateString" in aliases) out.add("""// ISO 8601 / RFC 3339 date-time, e.g. "2024-01-15T10:30:00Z", "2024-01-15T10:30:00+08:00"
+export type DateString = string;""")
+            if ("TimestampString" in aliases) out.add("""// "YYYY-MM-DD HH:mm:ss" or "YYYY/MM/DD HH:mm:ss", common Java/SQL timestamp
+export type TimestampString = string;""")
             return out
         }
     }

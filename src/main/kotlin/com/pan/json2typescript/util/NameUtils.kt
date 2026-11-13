@@ -84,8 +84,38 @@ object NameUtils {
     )
 
     /**
-     * 把字段名转成类型名：去分隔符 + 首字母大写。
+     * 后端 Bean 尾缀：Java/Spring 后端常用的对象后缀，在生成 TS 类型名时剥离。
+     * userVO -> User、orderDTO -> Order、productEntity -> Product
+     *
+     * 按长度降序匹配（先长后短），避免 Request 没剥就被 Req 抢走。
+     * 匹配要求：后缀必须是 key 的最后一个 token（camelCase 首字母大写 或 snake_case 最后一段），
+     * 且剥离后剩下的主体至少还有 2 个字符（避免 VO -> 空 / UserVO -> Us 这种残词）。
+     */
+    private val BEAN_SUFFIXES = listOf(
+        "Request", "Response", "Req", "Resp",
+        "Entity", "Model", "Bean", "Form", "Param",
+        "DTO", "Dto", "VO", "Bo", "BO", "Po", "PO", "DO", "Do"
+    ).sortedByDescending { it.length }
+
+    private fun stripBeanSuffix(key: String): String {
+        // 先按非字母数字切 token，拿到最后一段（camelCase 里就是最后一个驼峰段）
+        val tokens = key.split(Regex("[^a-zA-Z0-9]+"))
+        if (tokens.isEmpty()) return key
+        val last = tokens.last()
+        val matched = BEAN_SUFFIXES.firstOrNull { suffix ->
+            last.equals(suffix, ignoreCase = true)
+        } ?: return key
+        // 剥离后主体至少保留 2 字符（防止 UserVO -> Us / AVO -> 空 等）
+        val body = key.removeSuffix(last)
+        val bodyTokens = body.split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }
+        if (bodyTokens.isEmpty() || bodyTokens.joinToString("").length < 2) return key
+        return body
+    }
+
+    /**
+     * 把字段名转成类型名：先剥离后端 Bean 尾缀 → 去分隔符 → 首字母大写。
      * user -> User、user_info -> UserInfo、user-info -> UserInfo
+     * userVO -> User、orderDTO -> Order、productEntity -> Product
      *
      * 数字开头的类型名在 TS 中非法（不能以数字开头），自动加 I 前缀：
      * 123abc -> I123abc、2fa -> I2fa
@@ -94,7 +124,8 @@ object NameUtils {
      * 则回退到默认类型名 "Field"，避免生成空名字的 export type。
      */
     fun toTypeName(key: String): String {
-        val raw = key
+        val stripped = stripBeanSuffix(key)
+        val raw = stripped
             .split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.isNotEmpty() }
             .joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }

@@ -18,8 +18,14 @@ class JsonParserTest {
     @Test
     fun `标准 JSON 数组与标量`() {
         assertEquals(3, JsonParser.parse("[1, 2, 3]").asJsonArray.size())
-        assertEquals("abc", JsonParser.parse("\"abc\"").asJsonPrimitive.asString)
-        assertEquals(1.5, JsonParser.parse("1.5").asJsonPrimitive.asDouble)
+    }
+
+    @Test
+    fun `顶层裸标量被拒绝（插件只处理对象/数组）`() {
+        assertThrows(Exception::class.java) { JsonParser.parse("\"abc\"") }
+        assertThrows(Exception::class.java) { JsonParser.parse("1.5") }
+        assertThrows(Exception::class.java) { JsonParser.parse("true") }
+        assertThrows(Exception::class.java) { JsonParser.parse("null") }
     }
 
     @Test

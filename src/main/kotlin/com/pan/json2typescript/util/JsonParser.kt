@@ -19,22 +19,20 @@ object JsonParser {
      *    - NaN / Infinity 等非标准数字
      */
     fun parse(json: String): JsonElement {
-        val cleaned = stripTrailingCommas(json.trim())
-        val element = JsonReader(StringReader(cleaned)).use { reader ->
+        val trimmed = json.trim()
+        // 这个插件只处理后端 JSON 响应（对象/数组），
+        // 顶层裸标量（"abc"、1.5、true）无法生成任何有意义的 TS 类型，直接拒。
+        // 同时也挡住 Gson LENIENT 把 "not json at all" 当成未加引号字符串错误解析的坑。
+        if (trimmed.isEmpty() || (trimmed.first() != '{' && trimmed.first() != '[')) {
+            throw IllegalArgumentException(
+                "Invalid JSON: expected top-level object or array"
+            )
+        }
+        val cleaned = stripTrailingCommas(trimmed)
+        return JsonReader(StringReader(cleaned)).use { reader ->
             reader.setStrictness(Strictness.LENIENT)
             JsonParser.parseReader(reader)
         }
-        when {
-            element.isJsonNull ->
-                throw IllegalArgumentException("Empty JSON")
-            !element.isJsonObject && !element.isJsonArray ->
-                // LENIENT 太宽：`not json at all` 会被当成未加引号字符串解析
-                // 这个插件只处理顶层对象/数组（生成 TS interface 才有意义）
-                throw IllegalArgumentException(
-                    "Invalid JSON: top-level value must be object or array"
-                )
-        }
-        return element
     }
 
     /**
